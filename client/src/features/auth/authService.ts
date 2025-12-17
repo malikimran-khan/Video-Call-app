@@ -3,35 +3,38 @@ import Cookies from "js-cookie";
 
 // Register user
 const register = async (userData: any) => {
-    const response = await api.post("/auth/signup", userData);
+  const response = await api.post("/auth/signup", userData);
 
-    if (response.data) {
-        Cookies.set("user", JSON.stringify(response.data), { expires: 7 }); // Expires in 7 days
-    }
-
-    return response.data;
+  // backend should return { user: {...} }
+  return response.data.user;
 };
 
-// Login user
+// Login user (cookie is set by backend automatically)
 const login = async (userData: any) => {
-    const response = await api.post("/auth/login", userData);
+  const response = await api.post("/auth/login", userData);
 
-    if (response.data) {
-        Cookies.set("user", JSON.stringify(response.data), { expires: 7 });
-    }
+  const user = response.data.user;
 
-    return response.data;
+  if (user) {
+    // Save user in cookie for page reloads
+    Cookies.set("user", JSON.stringify(user), { expires: 7 });
+  }
+
+  return user;
 };
 
-// Logout user
-const logout = () => {
-    Cookies.remove("user");
+
+// Logout user (backend clears cookie)
+const logout = async () => {
+  // Remove user from storage
+  Cookies.remove("user");
+  await api.post("/auth/logout");
 };
 
 const authService = {
-    register,
-    logout,
-    login,
+  register,
+  login,
+  logout,
 };
 
 export default authService;

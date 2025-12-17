@@ -1,17 +1,8 @@
 import React, { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
 import { motion } from "framer-motion";
-import {
-  FaUser,
-  FaEnvelope,
-  FaLock,
-  FaCamera,
-  FaPhotoVideo,
-  FaGoogle,
-  FaLinkedin,
-  FaGithub,
-} from "react-icons/fa";
+import { FaUser, FaEnvelope, FaLock, FaCamera, FaPhotoVideo, FaGoogle, FaLinkedin, FaGithub, FaArrowLeft } from "react-icons/fa";
 import { useSelector, useDispatch } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { register, reset } from "../../features/auth/authSlice";
 import type { AppDispatch, RootState } from "../../app/store";
 
@@ -31,15 +22,9 @@ const Signup: React.FC = () => {
   );
 
   useEffect(() => {
-    if (isError) {
-      // toast.error(message);
-      console.error(message);
-    }
-
     if (isSuccess || user) {
-      navigate("/dashboard");
+      navigate("/chat-app");
     }
-
     dispatch(reset());
   }, [user, isError, isSuccess, message, navigate, dispatch]);
 
@@ -63,159 +48,127 @@ const Signup: React.FC = () => {
     dispatch(register(formData));
   };
 
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-purple-600 via-blue-400 to-pink-500">
-      <motion.div
-        initial={{ opacity: 0, y: 50 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex overflow-hidden"
-      >
-        {/* Left side - Avatar Display */}
-        <div className="w-1/2 hidden md:flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-400">
-          <div className="text-center">
-            {formData.avatar ? (
-              <img
-                src={formData.avatar}
-                alt="avatar"
-                className="w-40 h-40 rounded-full object-cover mx-auto mb-4 border-4 border-white"
-              />
-            ) : (
-              <FaUser size={100} className="text-white mx-auto mb-4" />
-            )}
-            <p className="text-white font-semibold text-lg">Your Chat Avatar</p>
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col md:flex-row">
+      {/* Left Side - Brand Info */}
+      <div className="hidden md:flex flex-col justify-between w-1/2 bg-black text-white p-12">
+         <div className="text-2xl font-bold tracking-tighter">iVoice.</div>
+         <div className="mb-20">
+            <h2 className="text-5xl font-bold mb-6 tracking-tight">Join the network.</h2>
+            <p className="text-xl text-gray-400 max-w-md">Create an account to start connecting with colleagues and friends in high definition.</p>
+         </div>
+         <div className="text-sm text-gray-500">© iVoice Inc.</div>
+      </div>
+
+       {/* Right Side - Form */}
+       <div className="w-full md:w-1/2 flex items-center justify-center p-8 md:p-16 bg-white overflow-y-auto">
+          <div className="w-full max-w-md">
+             <Link to="/" className="inline-flex items-center text-gray-500 hover:text-black mb-8 transition text-sm font-medium">
+               <FaArrowLeft className="mr-2" /> Back to Home
+             </Link>
+             
+             <div className="mb-8">
+                <h2 className="text-3xl font-bold mb-2">Create Account</h2>
+                <p className="text-gray-500">Enter your details to get started.</p>
+             </div>
+
+             {isError && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm mb-6">
+                 {message}
+              </div>
+             )}
+
+             <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Avatar Selection */}
+                <div className="flex justify-center mb-6">
+                  {formData.avatar ? (
+                    <div className="relative group">
+                       <img src={formData.avatar} alt="avatar" className="w-24 h-24 rounded-full object-cover border-2 border-gray-200" />
+                       <button type="button" onClick={() => setFormData({...formData, avatar: ""})} className="absolute top-0 right-0 bg-gray-200 rounded-full p-1 text-gray-600 hover:bg-red-500 hover:text-white transition text-xs">✕</button>
+                    </div>
+                  ) : (
+                     <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300">
+                        <FaUser size={32} />
+                     </div>
+                  )}
+                </div>
+
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                   <div className="relative">
+                      <FaUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="text" 
+                        name="username"
+                        required 
+                        value={formData.username}
+                        onChange={handleChange}
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition"
+                        placeholder="John Doe"
+                      />
+                   </div>
+                </div>
+
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                   <div className="relative">
+                      <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="email" 
+                        name="email"
+                        required 
+                        value={formData.email}
+                        onChange={handleChange}
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition"
+                        placeholder="name@company.com"
+                      />
+                   </div>
+                </div>
+
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                   <div className="relative">
+                      <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="password"
+                        name="password"
+                        required 
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition"
+                        placeholder="••••••••"
+                      />
+                   </div>
+                </div>
+
+                {/* Avatar Upload Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex items-center justify-center gap-2 py-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-600">
+                     <FaCamera /> Take Photo
+                     <input type="file" name="avatar" accept="image/*" capture="user" onChange={handleChange} className="hidden" />
+                  </label>
+                  <label className="flex items-center justify-center gap-2 py-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-600">
+                     <FaPhotoVideo /> Upload
+                     <input type="file" name="avatar" accept="image/*" onChange={handleChange} className="hidden" />
+                  </label>
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  disabled={isLoading}
+                  className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-900 transition shadow-lg disabled:opacity-70 mt-4"
+                >
+                  {isLoading ? "Creating Account..." : "Sign Up"}
+                </motion.button>
+             </form>
+
+             <p className="mt-8 text-center text-sm text-gray-500">
+                Already have an account?{" "}
+                <Link to="/login" className="font-bold text-black hover:underline">Log in</Link>
+             </p>
           </div>
-        </div>
-
-        {/* Right side - Form */}
-        <div className="w-full md:w-1/2 p-10">
-          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Sign Up</h2>
-          
-          {isError && (
-             <p className="text-red-500 text-sm mb-4 text-center">{message}</p>
-          )}
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            {/* Username */}
-            <div className="flex items-center border rounded-xl px-3 py-2 shadow-sm focus-within:ring-2 ring-purple-500">
-              <FaUser className="text-gray-400 mr-3" />
-              <input
-                type="text"
-                name="username"
-                placeholder="Username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                className="w-full outline-none text-gray-700"
-              />
-            </div>
-
-            {/* Email */}
-            <div className="flex items-center border rounded-xl px-3 py-2 shadow-sm focus-within:ring-2 ring-purple-500">
-              <FaEnvelope className="text-gray-400 mr-3" />
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                className="w-full outline-none text-gray-700"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="flex items-center border rounded-xl px-3 py-2 shadow-sm focus-within:ring-2 ring-purple-500">
-              <FaLock className="text-gray-400 mr-3" />
-              <input
-                type="password"
-                name="password"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                className="w-full outline-none text-gray-700"
-              />
-            </div>
-
-            {/* Forget Password */}
-            <div className="text-right">
-              <a href="#" className="text-purple-600 text-sm hover:underline">
-                Forgot Password?
-              </a>
-            </div>
-
-            {/* Avatar Options */}
-            <div className="flex gap-4">
-              {/* Take Photo */}
-              <label className="flex-1 flex items-center gap-2 justify-center border-2 border-dashed border-gray-300 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-500 transition">
-                <FaCamera className="text-gray-400" />
-                <span className="text-gray-500 text-sm">Take Photo</span>
-                <input
-                  type="file"
-                  name="avatar"
-                  accept="image/*"
-                  capture="user"
-                  onChange={handleChange}
-                  className="hidden"
-                />
-              </label>
-
-              {/* Select from Gallery */}
-              <label className="flex-1 flex items-center gap-2 justify-center border-2 border-dashed border-gray-300 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-500 transition">
-                <FaPhotoVideo className="text-gray-400" />
-                <span className="text-gray-500 text-sm">Select from Gallery</span>
-                <input
-                  type="file"
-                  name="avatar"
-                  accept="image/*"
-                  onChange={handleChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Submit Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              className="bg-purple-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-purple-700 transition"
-              type="submit"
-              disabled={isLoading}
-            >
-              {isLoading ? "Signing Up..." : "Create Account"}
-            </motion.button>
-          </form>
-
-          {/* Social Login Options */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-500 mb-3">Or sign up with</p>
-            <div className="flex justify-center gap-4">
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                className="flex items-center gap-2 border border-gray-300 rounded-xl px-4 py-2 hover:bg-gray-100 transition"
-              >
-                <FaGoogle className="text-red-500" />
-                Google
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                className="flex items-center gap-2 border border-gray-300 rounded-xl px-4 py-2 hover:bg-gray-100 transition"
-              >
-                <FaLinkedin className="text-blue-600" />
-                LinkedIn
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                className="flex items-center gap-2 border border-gray-300 rounded-xl px-4 py-2 hover:bg-gray-100 transition"
-              >
-                <FaGithub className="text-gray-800" />
-                GitHub
-              </motion.button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
+       </div>
     </div>
   );
 };
