@@ -1,6 +1,6 @@
 import React, { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FaUser, FaEnvelope, FaLock, FaCamera, FaPhotoVideo, FaGoogle, FaLinkedin, FaGithub, FaArrowLeft } from "react-icons/fa";
+import { FaUser, FaEnvelope, FaLock, FaCamera, FaPhotoVideo, FaArrowLeft } from "react-icons/fa";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import { register, reset } from "../../features/auth/authSlice";
