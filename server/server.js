@@ -28,7 +28,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/messages" ,messageRoute)
 // Error Middleware
 app.use(errorHandler);
-
+app.get("/api" , (req , res) => {
+  res.send("API is running....")
+});
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
