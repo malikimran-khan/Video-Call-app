@@ -26,7 +26,7 @@ const Alluser: React.FC<AlluserProps> = ({ onSelectUser, selectedUserId }) => {
   if (isError) return <p className="text-center mt-10 text-red-500">{message}</p>;
 
   return (
-    <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full z-10">
+    <div className="w-full bg-white border-r border-gray-200 flex flex-col h-full z-10">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
         <h2 className="font-bold text-lg text-gray-800">Chats</h2>
       </div>

@@ -7,9 +7,10 @@ import { io } from "socket.io-client";
 
 interface ChatUserProps {
   selectedUser: any | null;
+  onBack?: () => void;
 }
 
-const ChatUser: React.FC<ChatUserProps> = ({ selectedUser }) => {
+const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
   const { messages, isLoading } = useSelector((state: RootState) => state.chat);
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -75,12 +76,12 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser }) => {
 
   if (!selectedUser) {
     return (
-        <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
-            <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                <FaUser size={40} className="text-gray-400"/>
+        <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-6 text-center">
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+                <FaUser size={30} className="md:size-40 text-gray-400"/>
             </div>
-            <h2 className="text-xl font-semibold text-gray-600">No Chat Selected</h2>
-            <p className="text-sm">Select a user from the sidebar to start a conversation.</p>
+            <h2 className="text-lg md:text-xl font-semibold text-gray-600">No Chat Selected</h2>
+            <p className="text-xs md:text-sm">Select a user from the sidebar to start a conversation.</p>
         </div>
     );
   }
@@ -88,29 +89,39 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser }) => {
   return (
     <div className="flex flex-col flex-1 h-full relative bg-gray-50/50">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 shadow-sm z-10">
+      <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-white border-b border-gray-200 shadow-sm z-10">
         <div className="flex items-center">
+            {/* Back Button for mobile */}
+            <button 
+              onClick={onBack}
+              className="mr-3 p-2 -ml-2 text-gray-600 md:hidden hover:bg-gray-100 rounded-full transition"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
             {selectedUser.avatar ? (
-                 <img src={selectedUser.avatar} alt={selectedUser.username} className="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200" />
+                 <img src={selectedUser.avatar} alt={selectedUser.username} className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover mr-3 border border-gray-200" />
             ) : (
-                <div className="w-10 h-10 bg-gray-100 rounded-full mr-3 flex items-center justify-center">
-                     <FaUser size={18} className="text-gray-400" />
+                <div className="w-9 h-9 md:w-10 md:h-10 bg-gray-100 rounded-full mr-3 flex items-center justify-center">
+                     <FaUser size={16} className="md:size-18 text-gray-400" />
                 </div>
             )}
             <div>
-                 <h2 className="text-base font-bold text-gray-900 leading-tight">{selectedUser.username}</h2>
-                 <p className="text-xs text-green-500 font-medium">Online</p>
+                 <h2 className="text-sm md:text-base font-bold text-gray-900 leading-tight truncate max-w-[120px] md:max-w-none">{selectedUser.username}</h2>
+                 <p className="text-[10px] md:text-xs text-green-500 font-medium">Online</p>
             </div>
         </div>
-        <div className="flex gap-4 text-gray-400">
-            <button className="hover:text-gray-600 transition"><FaPhone size={18} /></button>
-            <button className="hover:text-gray-600 transition"><FaVideo size={18} /></button>
-            <button className="hover:text-gray-600 transition"><FaEllipsisV size={18} /></button>
+        <div className="flex gap-2 md:gap-4 text-gray-400">
+            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaPhone size={18} /></button>
+            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaVideo size={18} /></button>
+            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaEllipsisV size={18} /></button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col custom-scrollbar bg-slate-50">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 flex flex-col custom-scrollbar bg-slate-50">
         {isLoading && messages.length === 0 ? (
           <p className="text-center text-gray-400 p-4">Loading messages...</p>
         ) : (
@@ -125,11 +136,11 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser }) => {
               }`}
             >
               <div
-                className={`flex flex-col max-w-lg shadow-sm ${
+                className={`flex flex-col max-w-[85%] md:max-w-lg shadow-sm ${
                     isMe ? "items-end" : "items-start"
                 }`}
               >
-                  <div className={`px-5 py-3 rounded-2xl text-sm md:text-base ${
+                  <div className={`px-4 py-2 md:px-5 md:py-3 rounded-2xl text-sm md:text-base ${
                     isMe
                      ? "bg-black text-white rounded-br-none"
                      : "bg-white text-gray-800 border border-gray-100 rounded-bl-none"
@@ -147,25 +158,25 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser }) => {
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white border-t border-gray-200">
-         <div className="flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-black focus-within:bg-white transition-all">
+      <div className="p-3 md:p-4 bg-white border-t border-gray-200">
+         <div className="flex items-center gap-2 bg-gray-100 px-3 md:px-4 py-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-black focus-within:bg-white transition-all shadow-sm">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Type a message..."
-              className="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-500"
+              className="flex-1 bg-transparent border-none outline-none text-sm md:text-base text-gray-800 placeholder-gray-500"
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
             />
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             >
               <FaPaperPlane size={14} className="-ml-0.5 mt-0.5" />
             </button>
          </div>
-         <div className="text-center mt-2 text-[10px] text-gray-400">
+         <div className="hidden md:block text-center mt-2 text-[10px] text-gray-400">
             Press Enter to send
          </div>
       </div>
