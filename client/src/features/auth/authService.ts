@@ -4,9 +4,13 @@ import Cookies from "js-cookie";
 // Register user
 const register = async (userData: any) => {
   const response = await api.post("/auth/signup", userData);
+  return response.data; // Now contains { message, email }
+};
 
-  // backend should return { user: {...} }
-  return response.data.user;
+// Verify OTP
+const verifyOTP = async (otpData: { email: string; otp: string }) => {
+  const response = await api.post("/auth/verify-otp", otpData);
+  return response.data;
 };
 
 // Login user (cookie is set by backend automatically)
@@ -35,6 +39,7 @@ const authService = {
   register,
   login,
   logout,
+  verifyOTP,
 };
 
 export default authService;

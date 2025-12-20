@@ -17,16 +17,16 @@ const Signup: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { user, isLoading, isError, isSuccess, message } = useSelector(
+  const { isLoading, isError, isSuccess, message } = useSelector(
     (state: RootState) => state.auth
   );
 
   useEffect(() => {
-    if (isSuccess || user) {
-      navigate("/chat-app");
+    if (isSuccess) {
+      navigate("/verify-otp", { state: { email: formData.email } });
+      dispatch(reset());
     }
-    dispatch(reset());
-  }, [user, isError, isSuccess, message, navigate, dispatch]);
+  }, [isSuccess, formData.email, navigate, dispatch]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, files } = e.target;

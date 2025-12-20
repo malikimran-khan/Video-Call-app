@@ -41,6 +41,20 @@ export const register = createAsyncThunk(
   }
 );
 
+// Verify OTP
+export const verifyOTP = createAsyncThunk(
+  "auth/verifyOTP",
+  async (otpData: { email: string; otp: string }, thunkAPI) => {
+    try {
+      return await authService.verifyOTP(otpData);
+    } catch (error: any) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
 // Login
 export const login = createAsyncThunk(
   "auth/login",
@@ -77,16 +91,31 @@ export const authSlice = createSlice({
       .addCase(register.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(register.fulfilled, (state, action: PayloadAction<IUser>) => {
+      .addCase(register.fulfilled, (state, action: any) => {
         state.isLoading = false;
         state.isSuccess = true;
-        state.user = action.payload;
+        state.message = action.payload.message;
+        state.user = null; // Don't set user until verified and logged in
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
         state.isError = true;
         state.message = action.payload as string;
-        state.user = null;
+      })
+
+      // VERIFY OTP
+      .addCase(verifyOTP.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(verifyOTP.fulfilled, (state, action: any) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.message = action.payload.message;
+      })
+      .addCase(verifyOTP.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isError = true;
+        state.message = action.payload as string;
       })
 
       // LOGIN
