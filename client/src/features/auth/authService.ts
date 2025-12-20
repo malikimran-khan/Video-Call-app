@@ -19,7 +19,7 @@ const login = async (userData: any) => {
     // Save user in cookie for page reloads
     Cookies.set("user", JSON.stringify(user), { expires: 7 });
   }
-
+  console.log("user", user)
   return user;
 };
 
