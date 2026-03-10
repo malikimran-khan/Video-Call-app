@@ -105,9 +105,14 @@ const EnterOTP: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading || otp.join("").length !== 6}
-              className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-sm font-bold rounded-2xl text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
+              className="group relative w-full flex items-center justify-center gap-2 py-4 px-4 border border-transparent text-sm font-bold rounded-2xl text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
             >
-              {isLoading ? "Verifying..." : "Verify OTP"}
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Verifying...
+                </>
+              ) : "Verify OTP"}
             </button>
           </div>
         </form>

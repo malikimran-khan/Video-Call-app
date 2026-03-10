@@ -157,9 +157,14 @@ const Signup: React.FC = () => {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   disabled={isLoading}
-                  className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-900 transition shadow-lg disabled:opacity-70 mt-4"
+                  className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-900 transition shadow-lg disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
                 >
-                  {isLoading ? "Creating Account..." : "Sign Up"}
+                  {isLoading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Creating Account...
+                    </>
+                  ) : "Sign Up"}
                 </motion.button>
              </form>
 

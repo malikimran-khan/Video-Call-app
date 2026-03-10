@@ -6,13 +6,13 @@ export const protect = async (req, res, next) => {
   if (req.cookies.access_token) {
     token = req.cookies.access_token;
   }
-  
+
   if (!token) {
     return res.status(401).json({ message: "Not authorized" });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
@@ -23,6 +23,5 @@ export const protect = async (req, res, next) => {
     next();
   } catch (error) {
     res.status(401).json({ message: "Not authorized", error });
-    console.log(error)
   }
 };

@@ -12,12 +12,19 @@ dotenv.config();
 connectDB();
 
 // Middleware
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-  })
-);
+// Robust CORS Middleware
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow all origins
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
+
+app.use(cors(corsOptions));
+// app.options("*", cors(corsOptions)); // Removed explicit call to avoid Express 5 wildcard crash
 
 app.use(express.json({ limit: "10mb" })); // For avatar base64
 app.use(express.urlencoded({ extended: true }));

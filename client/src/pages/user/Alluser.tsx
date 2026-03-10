@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../app/store";
 import { fetchUsers, resetUsers } from "../../features/user/userSlice";
 import { FaUser } from "react-icons/fa";
+import LoadingSpinner from "../../components/LoadingSpinner";
 
 interface AlluserProps {
   onSelectUser: (user: any) => void;
@@ -22,7 +23,7 @@ const Alluser: React.FC<AlluserProps> = ({ onSelectUser, selectedUserId }) => {
     };
   }, [dispatch]);
 
-  if (isLoading) return <p className="text-center mt-10 text-gray-500">Loading users...</p>;
+  if (isLoading) return <LoadingSpinner size="md" label="Loading users..." />;
   if (isError) return <p className="text-center mt-10 text-red-500">{message}</p>;
 
   return (
