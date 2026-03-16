@@ -11,16 +11,14 @@ export interface AuthState {
   message: string;
 }
 
-import Cookies from "js-cookie";
-
-// Helper to get user from cookie
-const getUserFromCookie = (): IUser | null => {
-  const user = Cookies.get("user");
+// Helper to get user from sessionStorage
+const getUserFromSessionStorage = (): IUser | null => {
+  const user = sessionStorage.getItem("user");
   return user ? JSON.parse(user) : null;
 };
 
 const initialState: AuthState = {
-  user: getUserFromCookie(),
+  user: getUserFromSessionStorage(),
   isError: false,
   isSuccess: false,
   isLoading: false,
@@ -72,6 +70,31 @@ export const login = createAsyncThunk(
 // Logout
 export const logout = createAsyncThunk("auth/logout", async () => {
   await authService.logout();
+});
+
+// Update Profile
+export const updateProfile = createAsyncThunk(
+  "auth/updateProfile",
+  async (userData: { username?: string; avatar?: string; bio?: string }, thunkAPI) => {
+    try {
+      return await authService.updateProfile(userData);
+    } catch (error: any) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
+// Delete Account
+export const deleteAccount = createAsyncThunk("auth/deleteAccount", async (_, thunkAPI) => {
+  try {
+    return await authService.deleteAccount();
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(
+      error.response?.data?.message || error.message
+    );
+  }
 });
 
 export const authSlice = createSlice({
@@ -137,6 +160,37 @@ export const authSlice = createSlice({
       // LOGOUT
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
+      })
+
+      // UPDATE PROFILE
+      .addCase(updateProfile.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(updateProfile.fulfilled, (state, action: any) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.user = action.payload.user;
+        state.message = action.payload.message;
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isError = true;
+        state.message = action.payload as string;
+      })
+
+      // DELETE ACCOUNT
+      .addCase(deleteAccount.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(deleteAccount.fulfilled, (state) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.user = null;
+      })
+      .addCase(deleteAccount.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isError = true;
+        state.message = action.payload as string;
       });
   },
 });

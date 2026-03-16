@@ -26,36 +26,64 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    // 2️⃣ Check if verified
-    if (!user.isVerified) {
-      return res.status(401).json({ message: "Please verify your email first" });
-    }
-
     // 3️⃣ Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
+    // 🔬 Check if verified by admin
+    if (!user.isAdminVerified) {
+      return res.status(403).json({ message: "Account pending admin approval" });
+    }
+
+    // 2️⃣ Check if verified by email - If not, send a fresh OTP
+    if (!user.isVerified) {
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+      
+      user.otp = otp;
+      user.otpExpires = otpExpires;
+      await user.save();
+
+      // Send Email
+      const mailOptions = {
+        from: `"iVoice Chat" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Verify your email - iVoice Chat",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px; margin: auto;">
+            <h2 style="color: #333; text-align: center;">Verify Your Account</h2>
+            <p>Hi ${user.username},</p>
+            <p>To continue with your login, please use the following OTP to verify your email address:</p>
+            <div style="background: #f4f4f4; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; border-radius: 5px; letter-spacing: 5px; margin: 20px 0;">
+              ${otp}
+            </div>
+            <p style="color: #777; font-size: 12px; text-align: center;">This OTP is valid for 10 minutes.</p>
+            <hr style="border: 0; border-top: 1px solid #eee;" />
+            <p style="color: #999; font-size: 12px; text-align: center;">If you didn't attempt to log in, please secure your account.</p>
+          </div>
+        `,
+      };
+      await transporter.sendMail(mailOptions);
+
+      return res.status(401).json({ message: "verify-otp", email: user.email });
+    }
+
     // 4️⃣ Generate JWT
     const token = generateToken(user._id.toString());
 
-    // 5️⃣ Send token as HttpOnly Cookie
-    res.cookie("access_token", token, {
-      httpOnly: true, // ❌ JS cannot access
-      secure: true, // Always true for cross-site cookies
-      sameSite: "none", // Allow cross-site cookies
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    // 6️⃣ Send safe response (no token in body)
+    // 5️⃣ Send safe response with token
     return res.status(200).json({
       message: "Login successful",
+      token,
       user: {
         id: user._id,
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        bio: user.bio,
       },
     });
   } catch (error) {
@@ -161,7 +189,8 @@ export const getAllUsers = async (req, res) => {
       id: user._id,
       username: user.username,
       email: user.email,
-      avatar: user.avatar
+      avatar: user.avatar,
+      bio: user.bio
     }));
 
     res.status(200).json(formattedUsers);
@@ -174,14 +203,63 @@ export const getAllUsers = async (req, res) => {
 // Logout User
 export const logout = (req, res) => {
   try {
-    res.cookie("access_token", "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      expires: new Date(0),
-    });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error });
+  }
+};
+
+// Update User Profile
+export const updateProfile = async (req, res) => {
+  try {
+    const { username, avatar, bio } = req.body;
+    
+    // Find the current user and update fields
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        $set: { 
+          ...(username && { username }),
+          ...(avatar && { avatar }),
+          ...(bio !== undefined && { bio }) // Allow empty bio
+        } 
+      },
+      { new: true } // Return updated document
+    ).select("-password");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      user: {
+        id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        avatar: updatedUser.avatar,
+        bio: updatedUser.bio,
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+// Delete User Account
+export const deleteAccount = async (req, res) => {
+  try {
+    // Optionally delete messages where user is sender or receiver (skipped for now to avoid breaking histories)
+    // await Message.deleteMany({ $or: [{ sender: req.user.id }, { receiver: req.user.id }] });
+
+    const deletedUser = await User.findByIdAndDelete(req.user.id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ message: "Account deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };

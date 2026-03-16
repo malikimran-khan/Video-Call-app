@@ -20,11 +20,11 @@ const initialState: ChatState = {
 // 🔹 Fetch messages
 export const fetchMessages = createAsyncThunk<
   IMessage[],
-  string,
+  { userId: string; isGroupChat?: boolean },
   { rejectValue: string }
->("chat/fetchMessages", async (userId, thunkAPI) => {
+>("chat/fetchMessages", async ({ userId, isGroupChat }, thunkAPI) => {
   try {
-    return await chatService.fetchMessages(userId);
+    return await chatService.fetchMessages(userId, isGroupChat);
   } catch (error: any) {
     return thunkAPI.rejectWithValue(
       error.response?.data?.message || error.message
@@ -35,7 +35,7 @@ export const fetchMessages = createAsyncThunk<
 // 🔹 Send message
 export const sendMessage = createAsyncThunk<
   IMessage,
-  { receiver: string; text: string },
+  { receiver: string; text: string; isGroupChat?: boolean },
   { rejectValue: string }
 >("chat/sendMessage", async (data, thunkAPI) => {
   try {
@@ -50,7 +50,7 @@ export const sendMessage = createAsyncThunk<
 // 🔹 Send voice message
 export const sendVoiceMessage = createAsyncThunk<
   IMessage,
-  { receiver: string; audio: Blob },
+  { receiver: string; audio: Blob; text?: string; isGroupChat?: boolean },
   { rejectValue: string }
 >("chat/sendVoiceMessage", async (data, thunkAPI) => {
   try {
@@ -65,7 +65,7 @@ export const sendVoiceMessage = createAsyncThunk<
 // 🔹 Send file message (image, video, document)
 export const sendFileMessage = createAsyncThunk<
   IMessage,
-  { receiver: string; file: File },
+  { receiver: string; file: File; isGroupChat?: boolean },
   { rejectValue: string }
 >("chat/sendFileMessage", async (data, thunkAPI) => {
   try {

@@ -5,7 +5,9 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },
   avatar: { type: String },
-  isVerified: { type: Boolean, default: false },
+  bio: { type: String, default: "Hey there! I am using iVoice Chat." },
+  isVerified: { type: Boolean, default: false }, // Email verification
+  isAdminVerified: { type: Boolean, default: false }, // Admin approval
   otp: { type: String },
   otpExpires: { type: Date },
   createdAt: { type: Date, default: Date.now },

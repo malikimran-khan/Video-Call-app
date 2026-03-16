@@ -4,25 +4,32 @@ import { cloudinary } from "../config/cloudinary.js";
 // Send a message
 import { getReceiverSocketId, io } from "../socket/socket.js";
 
+import Group from "../models/Group.js";
+
 export const sendMessage = async (req, res) => {
-  console.log("api hit")
   try {
-    const { receiver, text } = req.body;
+    const { receiver, text, isGroupChat } = req.body;
     const sender = req.user.id;
 
     const newMessage = new Message({
       sender,
       receiver,
       text,
+      isGroupChat: !!isGroupChat,
     });
 
     await newMessage.save();
 
     // Socket.io functionality
-    const receiverSocketId = getReceiverSocketId(receiver);
-    if (receiverSocketId) {
-      // io.to(<socket_id>).emit() used to send events to specific client
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    if (isGroupChat) {
+      // Broadcast to all group members except sender
+      // Note: members should already be in a room matching the group ID
+      io.to(receiver).emit("newMessage", newMessage);
+    } else {
+      const receiverSocketId = getReceiverSocketId(receiver);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("newMessage", newMessage);
+      }
     }
 
     res.status(201).json(newMessage);
@@ -33,15 +40,25 @@ export const sendMessage = async (req, res) => {
 
 export const getMessages = async (req, res) => {
   try {
-    const { userId } = req.params;
-    const senderId = req.user.id; // Logged in user
+    const { userId } = req.params; // or groupId
+    const senderId = req.user.id;
+    const { isGroupChat } = req.query;
+
+    let query;
+    if (isGroupChat === "true") {
+      query = { receiver: userId, isGroupChat: true };
+    } else {
+      query = {
+        $or: [
+          { sender: senderId, receiver: userId },
+          { sender: userId, receiver: senderId },
+        ],
+        isGroupChat: { $ne: true },
+      };
+    }
 
     const messages = await Message.find({
-      $or: [
-        { sender: senderId, receiver: userId },
-        { sender: userId, receiver: senderId },
-      ],
-      // Exclude messages that this user has deleted for themselves
+      ...query,
       deletedFor: { $ne: senderId },
     }).sort({ createdAt: 1 });
 
@@ -53,7 +70,7 @@ export const getMessages = async (req, res) => {
 
 export const uploadVoice = async (req, res) => {
   try {
-    const { receiver } = req.body;
+    const { receiver, text, isGroupChat } = req.body;
     const sender = req.user.id;
 
     if (!req.file) {
@@ -63,16 +80,21 @@ export const uploadVoice = async (req, res) => {
     const newMessage = new Message({
       sender,
       receiver,
+      text,
       messageType: "voice",
-      fileUrl: req.file.path, // req.file.path is the Cloudinary URL
+      fileUrl: req.file.path,
+      isGroupChat: !!isGroupChat,
     });
 
     await newMessage.save();
 
-    // Socket.io functionality
-    const receiverSocketId = getReceiverSocketId(receiver);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    if (isGroupChat) {
+      io.to(receiver).emit("newMessage", newMessage);
+    } else {
+      const receiverSocketId = getReceiverSocketId(receiver);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("newMessage", newMessage);
+      }
     }
 
     res.status(201).json(newMessage);
@@ -84,14 +106,13 @@ export const uploadVoice = async (req, res) => {
 
 export const uploadFile = async (req, res) => {
   try {
-    const { receiver } = req.body;
+    const { receiver, isGroupChat } = req.body;
     const sender = req.user.id;
 
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    // Determine message type from MIME type
     const mime = req.file.mimetype || "";
     let messageType = "document";
     if (mime.startsWith("image/")) messageType = "image";
@@ -103,14 +124,18 @@ export const uploadFile = async (req, res) => {
       messageType,
       fileUrl: req.file.path,
       fileName: req.file.originalname || req.file.filename || "file",
+      isGroupChat: !!isGroupChat,
     });
 
     await newMessage.save();
 
-    // Socket.io functionality
-    const receiverSocketId = getReceiverSocketId(receiver);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    if (isGroupChat) {
+      io.to(receiver).emit("newMessage", newMessage);
+    } else {
+      const receiverSocketId = getReceiverSocketId(receiver);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("newMessage", newMessage);
+      }
     }
 
     res.status(201).json(newMessage);
@@ -120,26 +145,7 @@ export const uploadFile = async (req, res) => {
   }
 };
 
-// Helper: extract Cloudinary public_id from a URL
-const extractPublicId = (url) => {
-  try {
-    // Cloudinary URLs look like:
-    // https://res.cloudinary.com/<cloud>/image/upload/v123/folder/filename.ext
-    // https://res.cloudinary.com/<cloud>/video/upload/v123/folder/filename.ext
-    // https://res.cloudinary.com/<cloud>/raw/upload/v123/folder/filename.ext
-    const parts = url.split("/upload/");
-    if (parts.length < 2) return null;
-    // After /upload/ we have: v123456/folder/filename.ext
-    const afterUpload = parts[1];
-    // Remove the version number (v123456/)
-    const withoutVersion = afterUpload.replace(/^v\d+\//, "");
-    // Remove file extension
-    const publicId = withoutVersion.replace(/\.[^/.]+$/, "");
-    return publicId;
-  } catch {
-    return null;
-  }
-};
+import { extractPublicId } from "../utils/cloudinaryUtils.js";
 
 // Delete message
 export const deleteMessage = async (req, res) => {

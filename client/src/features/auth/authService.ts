@@ -1,5 +1,4 @@
 import api from "../../components/api/axios";
-import Cookies from "js-cookie";
 
 // Register user
 const register = async (userData: any) => {
@@ -13,15 +12,16 @@ const verifyOTP = async (otpData: { email: string; otp: string }) => {
   return response.data;
 };
 
-// Login user (cookie is set by backend automatically)
+// Login user
 const login = async (userData: any) => {
   const response = await api.post("/auth/login", userData);
 
-  const user = response.data.user;
+  const { user, token } = response.data;
 
-  if (user) {
-    // Save user in cookie for page reloads
-    Cookies.set("user", JSON.stringify(user), { expires: 7 });
+  if (user && token) {
+    // Save user and token in sessionStorage for page reloads, isolated by tab
+    sessionStorage.setItem("user", JSON.stringify(user));
+    sessionStorage.setItem("token", token);
   }
   console.log("user", user)
   return user;
@@ -30,9 +30,28 @@ const login = async (userData: any) => {
 
 // Logout user (backend clears cookie)
 const logout = async () => {
-  // Remove user from storage
-  Cookies.remove("user");
+  // Remove user and token from storage
+  sessionStorage.removeItem("user");
+  sessionStorage.removeItem("token");
   await api.post("/auth/logout");
+};
+
+// Update profile
+const updateProfile = async (userData: { username?: string; avatar?: string; bio?: string }) => {
+  const response = await api.put("/auth/profile", userData);
+
+  if (response.data.user) {
+    sessionStorage.setItem("user", JSON.stringify(response.data.user));
+  }
+  return response.data;
+};
+
+// Delete account
+const deleteAccount = async () => {
+  const response = await api.delete("/auth/profile");
+  sessionStorage.removeItem("user");
+  sessionStorage.removeItem("token");
+  return response.data;
 };
 
 const authService = {
@@ -40,6 +59,8 @@ const authService = {
   login,
   logout,
   verifyOTP,
+  updateProfile,
+  deleteAccount,
 };
 
 export default authService;

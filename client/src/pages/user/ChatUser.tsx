@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { FaUser, FaPaperPlane, FaEllipsisV, FaPhone, FaVideo, FaMicrophone, FaStop, FaPaperclip, FaTimes, FaDownload, FaRedo, FaBan, FaTrash } from "react-icons/fa";
+import { FaUser, FaUsers, FaPaperPlane, FaEllipsisV, FaPhone, FaVideo, FaMicrophone, FaStop, FaPaperclip, FaTimes, FaDownload, FaRedo, FaBan, FaTrash, FaVolumeUp, FaFont, FaPhoneSlash } from "react-icons/fa";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../app/store";
@@ -16,8 +16,8 @@ import {
   removeOptimisticMessage,
   deleteMessageThunk,
   markMessageDeletedBySender,
-  removeMessageLocally,
 } from "../../features/chat/chatSlice";
+import { startCall } from "../../features/call/callSlice";
 import type { IMessage } from "../../features/chat/chatTypes";
 import { io } from "socket.io-client";
 
@@ -39,6 +39,24 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const timerRef = useRef<any>(null);
+
+  // Speech Recognition states
+  const [speechRecognition, setSpeechRecognition] = useState<any>(null);
+  const transcriptRef = useRef<string>("");
+  const [shownTranscripts, setShownTranscripts] = useState<Set<string>>(new Set());
+
+  // Dictation states (Voice to Text input)
+  const [isDictating, setIsDictating] = useState(false);
+  const dictationRecognitionRef = useRef<any>(null);
+
+  const toggleTranscript = (msgId: string) => {
+    setShownTranscripts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(msgId)) newSet.delete(msgId);
+      else newSet.add(msgId);
+      return newSet;
+    });
+  };
 
   // File attachment states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -69,10 +87,14 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
   // Initialize Socket.io
   useEffect(() => {
     if (currentUser) {
+      const token = sessionStorage.getItem("token");
       const newSocket = io("http://localhost:5000", {
         query: {
           userId: currentUser.id,
         },
+        auth: {
+          token
+        }
       });
       setSocket(newSocket);
 
@@ -86,7 +108,13 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
   useEffect(() => {
     if (socket) {
       socket.on("newMessage", (newMessage: any) => {
-        if (selectedUser && newMessage.sender === selectedUser.id) {
+        const isFromSelected = selectedUser && (
+          newMessage.isGroupChat 
+            ? getIdString(newMessage.receiver) === getIdString(selectedUser.id)
+            : getIdString(newMessage.sender) === getIdString(selectedUser.id)
+        );
+
+        if (isFromSelected) {
            dispatch(addMessage(newMessage));
         }
       });
@@ -107,7 +135,10 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
 
   useEffect(() => {
     if (selectedUser) {
-      dispatch(fetchMessages(selectedUser.id));
+      dispatch(fetchMessages({ 
+        userId: selectedUser.id, 
+        isGroupChat: selectedUser.isGroup 
+      }));
     }
     return () => {
       dispatch(resetChat());
@@ -155,6 +186,7 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
       sendMessage({
         receiver: selectedUser.id,
         text: input,
+        isGroupChat: selectedUser.isGroup,
       })
     );
     setInput("");
@@ -209,6 +241,7 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
       createdAt: new Date().toISOString(),
       uploadStatus: "uploading",
       localPreviewUrl,
+      isGroupChat: selectedUser.isGroup,
     };
     dispatch(addOptimisticMessage(optimisticMsg));
 
@@ -218,7 +251,11 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
     // 3. Upload in background
     try {
       const result = await dispatch(
-        sendFileMessage({ receiver: selectedUser.id, file })
+        sendFileMessage({ 
+          receiver: selectedUser.id, 
+          file,
+          isGroupChat: selectedUser.isGroup 
+        })
       ).unwrap();
 
       // 4. On success → replace temp with real message
@@ -233,7 +270,7 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
     }
   };
 
-  const handleVoiceSendOptimistic = (audioBlob: Blob) => {
+  const handleVoiceSendOptimistic = (audioBlob: Blob, transcriptText?: string) => {
     if (!selectedUser || !currentUser) return;
 
     const tempId = "temp-voice-" + Date.now();
@@ -244,15 +281,22 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
       _id: tempId,
       sender: currentUser.id,
       receiver: selectedUser.id,
+      text: transcriptText,
       messageType: "voice",
       createdAt: new Date().toISOString(),
       uploadStatus: "uploading",
       localPreviewUrl,
+      isGroupChat: selectedUser.isGroup,
     };
     dispatch(addOptimisticMessage(optimisticMsg));
 
     // 2. Upload in background
-    dispatch(sendVoiceMessage({ receiver: selectedUser.id, audio: audioBlob }))
+    dispatch(sendVoiceMessage({ 
+      receiver: selectedUser.id, 
+      audio: audioBlob, 
+      text: transcriptText,
+      isGroupChat: selectedUser.isGroup
+    }))
       .unwrap()
       .then((result) => {
         dispatch(updateOptimisticMessage({ tempId, realMessage: result }));
@@ -352,11 +396,45 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
       const recorder = new MediaRecorder(stream);
       const chunks: BlobPart[] = [];
 
+      // Setup Speech Recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        transcriptRef.current = "";
+        let finalTrans = "";
+        recognition.onresult = (event: any) => {
+          let interimTrans = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTrans += event.results[i][0].transcript + " ";
+            } else {
+              interimTrans += event.results[i][0].transcript + " ";
+            }
+          }
+          transcriptRef.current = finalTrans + interimTrans;
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error("Speech Recognition Error:", event.error);
+        };
+        
+        recognition.onend = () => {
+          console.log("Speech recognition stopped prematurely.");
+        };
+
+        recognition.start();
+        setSpeechRecognition(recognition);
+      }
+
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = () => {
         const audioBlob = new Blob(chunks, { type: "audio/webm" });
+        const finalTranscript = transcriptRef.current.trim();
+        console.log("Submitting voice note. Transcript length:", finalTranscript.length);
         if (selectedUser) {
-          handleVoiceSendOptimistic(audioBlob);
+          handleVoiceSendOptimistic(audioBlob, finalTranscript);
         }
         stream.getTracks().forEach((track) => track.stop());
       };
@@ -380,6 +458,54 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
       setIsRecording(false);
       clearInterval(timerRef.current);
     }
+    if (speechRecognition) {
+      speechRecognition.stop();
+      setSpeechRecognition(null);
+    }
+  };
+
+  // ----- Voice Dictation (Speech to Text) for Chat Input -----
+  const startDictation = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice typing is not supported in your browser.");
+      return;
+    }
+
+    if (isDictating && dictationRecognitionRef.current) {
+      dictationRecognitionRef.current.stop();
+      setIsDictating(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + " ";
+        }
+      }
+      if (finalTranscript) {
+        setInput((prev) => prev + finalTranscript);
+      }
+    };
+
+    recognition.onerror = (e: any) => {
+      console.error("Dictation error:", e.error);
+      setIsDictating(false);
+    };
+
+    recognition.onend = () => {
+      setIsDictating(false);
+    };
+
+    recognition.start();
+    dictationRecognitionRef.current = recognition;
+    setIsDictating(true);
   };
 
   const formatTime = (seconds: number) => {
@@ -473,7 +599,8 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
     switch (msg.messageType) {
       case "voice":
         return (
-          <div className="flex items-center gap-2 min-w-[200px] relative">
+          <div className="flex flex-col min-w-[200px] relative">
+            <div className="flex items-center gap-2">
             {msg.uploadStatus === "uploading" ? (
               <div className="flex items-center gap-2 py-1 w-full">
                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
@@ -496,10 +623,26 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
                 </button>
               </div>
             ) : (
-              <audio controls className={`h-8 ${isMe ? "invert brightness-0" : ""}`}>
-                <source src={msg.fileUrl} type="audio/webm" />
-                Your browser does not support the audio element.
-              </audio>
+              <>
+                <audio controls className={`h-8 w-44 ${isMe ? "invert brightness-0" : ""}`}>
+                  <source src={msg.fileUrl} type="audio/webm" />
+                  Your browser does not support the audio element.
+                </audio>
+                <button 
+                  onClick={() => toggleTranscript(msg._id)}
+                  className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${shownTranscripts.has(msg._id) ? "bg-black/20" : "hover:bg-black/10"}`}
+                  title="Translate to text"
+                >
+                  <FaFont size={12} className={isMe ? "text-white" : "text-gray-600"} />
+                </button>
+              </>
+            )}
+            </div>
+            {shownTranscripts.has(msg._id) && !msg.uploadStatus && (
+              <div className={`mt-2 p-2 rounded-lg text-xs leading-relaxed ${isMe ? "bg-white/20 text-gray-200" : "bg-gray-100 text-gray-700"}`}>
+                <span className="font-semibold block mb-0.5">Transcript:</span>
+                {msg.text && msg.text.trim() !== "" ? msg.text : <span className="italic opacity-60">Transcript not available for this voice message.</span>}
+              </div>
             )}
           </div>
         );
@@ -617,8 +760,59 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
           </div>
         );
 
+      case "call": {
+        const formatCallDuration = (s: number) => {
+          if (!s || s === 0) return "";
+          const m = Math.floor(s / 60);
+          const sec = s % 60;
+          return ` · ${m}:${sec.toString().padStart(2, "0")}`;
+        };
+        const isVoice = msg.callType === "voice";
+        const icon = msg.callStatus === "completed" 
+          ? (isVoice ? "📞" : "📹")
+          : "📞";
+        const label = (() => {
+          switch (msg.callStatus) {
+            case "completed": return `${isVoice ? "Voice" : "Video"} call${formatCallDuration(msg.callDuration || 0)}`;
+            case "missed": return `Missed ${isVoice ? "voice" : "video"} call`;
+            case "declined": return `Declined ${isVoice ? "voice" : "video"} call`;
+            case "no_answer": return `No answer`;
+            default: return "Call";
+          }
+        })();
+        const isNegative = msg.callStatus !== "completed";
+        return (
+          <div className={`flex items-center gap-2 py-1 ${isNegative ? "opacity-80" : ""}`}>
+            <span className="text-lg">{icon}</span>
+            <div>
+              <span className={`text-sm ${isNegative ? (isMe ? "text-red-300" : "text-red-500") : ""}`}>{label}</span>
+            </div>
+            {isNegative && !isMe && (
+              <FaPhoneSlash size={12} className="text-red-400 ml-1" />
+            )}
+          </div>
+        );
+      }
+
       default:
-        return msg.text;
+        return (
+          <div className="flex items-center gap-3">
+            <span className="break-words max-w-[90%]">{msg.text}</span>
+            <button
+              onClick={() => {
+                if (window.speechSynthesis.speaking) {
+                  window.speechSynthesis.cancel();
+                }
+                const utterance = new SpeechSynthesisUtterance(msg.text);
+                window.speechSynthesis.speak(utterance);
+              }}
+              className="p-1 rounded-full opacity-60 hover:opacity-100 hover:bg-black/10 transition-all flex-shrink-0"
+              title="Read aloud"
+            >
+              <FaVolumeUp size={12} className={isMe ? "text-white" : "text-gray-600"} />
+            </button>
+          </div>
+        );
     }
   };
 
@@ -649,21 +843,57 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
               </svg>
             </button>
 
-            {selectedUser.avatar ? (
-                 <img src={selectedUser.avatar} alt={selectedUser.username} className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover mr-3 border border-gray-200" />
+            {selectedUser.isGroup ? (
+              <div className="w-9 h-9 md:w-10 md:h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100 mr-3">
+                <FaUsers size={20} />
+              </div>
+            ) : selectedUser.avatar ? (
+              <img src={selectedUser.avatar} alt={selectedUser.username} className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover mr-3 border border-gray-200" />
             ) : (
-                <div className="w-9 h-9 md:w-10 md:h-10 bg-gray-100 rounded-full mr-3 flex items-center justify-center">
-                     <FaUser size={16} className="md:size-18 text-gray-400" />
-                </div>
+              <div className="w-9 h-9 md:w-10 md:h-10 bg-gray-100 rounded-full mr-3 flex items-center justify-center">
+                <FaUser size={16} className="md:size-18 text-gray-400" />
+              </div>
             )}
             <div>
-                 <h2 className="text-sm md:text-base font-bold text-gray-900 leading-tight truncate max-w-[120px] md:max-w-none">{selectedUser.username}</h2>
-                 <p className="text-[10px] md:text-xs text-green-500 font-medium">Online</p>
+                 <h2 className="text-sm md:text-base font-bold text-gray-900 leading-tight truncate max-w-[120px] md:max-w-none">
+                   {selectedUser.isGroup ? selectedUser.name : selectedUser.username}
+                 </h2>
+                 <p className="text-[10px] md:text-xs text-green-500 font-medium">
+                   {selectedUser.isGroup ? `${selectedUser.members?.length || 0} members` : "Online"}
+                 </p>
             </div>
         </div>
         <div className="flex gap-2 md:gap-4 text-gray-400">
-            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaPhone size={18} /></button>
-            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaVideo size={18} /></button>
+            <button
+              onClick={() => {
+                if (selectedUser) {
+                  dispatch(startCall({
+                    remoteUserId: selectedUser.id || selectedUser._id,
+                    remoteUserInfo: { username: selectedUser.username, avatar: selectedUser.avatar },
+                    callType: "voice",
+                  }));
+                }
+              }}
+              className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"
+              title="Voice Call"
+            >
+              <FaPhone size={18} />
+            </button>
+            <button
+              onClick={() => {
+                if (selectedUser) {
+                  dispatch(startCall({
+                    remoteUserId: selectedUser.id || selectedUser._id,
+                    remoteUserInfo: { username: selectedUser.username, avatar: selectedUser.avatar },
+                    callType: "video",
+                  }));
+                }
+              }}
+              className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"
+              title="Video Call"
+            >
+              <FaVideo size={18} />
+            </button>
             <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaEllipsisV size={18} /></button>
         </div>
       </div>
@@ -803,68 +1033,89 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
         className="hidden"
       />
 
-      {/* Input */}
-      <div className="p-3 md:p-4 bg-white border-t border-gray-200">
-         <div className="flex items-center gap-2 bg-gray-100 px-3 md:px-4 py-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-black focus-within:bg-white transition-all shadow-sm">
-            {isRecording ? (
-              <div className="flex-1 flex items-center justify-between px-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-gray-600">Recording... {formatTime(recordingTime)}</span>
-                </div>
-                <button 
-                  onClick={stopRecording}
-                  className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition shadow-md"
-                >
-                  <FaStop size={12} />
-                </button>
-              </div>
+      {/* Input Area */}
+      <div className="bg-white border-t border-gray-200 p-3 md:p-4 pb-4 md:pb-6 z-10 w-full relative">
+        {isRecording ? (
+          <div className="flex items-center gap-3 md:gap-4 w-full bg-red-50 p-3 rounded-full border border-red-100 animate-pulse">
+            <div className="w-2.5 h-2.5 bg-red-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+            <span className="text-red-500 font-mono text-sm font-semibold min-w-[50px]">
+              {formatTime(recordingTime)}
+            </span>
+            <span className="text-red-400 text-sm hidden sm:inline">Recording voice message...</span>
+            <button
+              onClick={stopRecording}
+              className="ml-auto w-10 h-10 md:w-12 md:h-12 bg-white text-red-500 rounded-full flex items-center justify-center hover:bg-red-100 transition shadow-sm border border-red-200"
+            >
+              <FaStop />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 max-w-full">
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition flex-shrink-0"
+              title="Attach File"
+            >
+              <FaPaperclip size={18} />
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              onChange={handleFileSelect}
+            />
+
+            {/* Dictation Button */}
+            <button
+              onClick={startDictation}
+              className={`p-2.5 rounded-full transition flex-shrink-0 ${
+                isDictating 
+                  ? "bg-blue-100 text-blue-500 animate-pulse" 
+                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              }`}
+              title="Voice Typing (Speech to Text)"
+            >
+              {isDictating ? <FaStop size={16} /> : <FaMicrophone size={16} />}
+            </button>
+
+            <div className="flex-1 min-w-0 bg-gray-100 rounded-full flex items-center px-4 relative">
+              {isDictating && (
+                 <span className="absolute -top-8 left-4 text-xs bg-blue-500 text-white py-1 px-3 rounded-full shadow-md animate-bounce">Listening...</span>
+              )}
+              <input
+                type="text"
+                placeholder={isDictating ? "Listening for text..." : "Type a message..."}
+                className="w-full bg-transparent p-3 md:p-3.5 outline-none text-gray-700 placeholder-gray-400 text-sm md:text-base border-none"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+              />
+            </div>
+            
+            {input.trim().length > 0 || isDictating ? (
+              <button
+                onClick={handleSend}
+                className="w-10 h-10 md:w-12 md:h-12 bg-black text-white rounded-full flex items-center justify-center hover:bg-gray-800 hover:scale-105 transition shadow-md flex-shrink-0"
+              >
+                <FaPaperPlane className="-ml-1" size={16} />
+              </button>
             ) : (
-              <>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 bg-transparent border-none outline-none text-sm md:text-base text-gray-800 placeholder-gray-500"
-                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  disabled={!!selectedFile}
-                />
-                <div className="flex items-center gap-1">
-                   {!input.trim() && !selectedFile && (
-                     <>
-                       <button
-                         onClick={() => fileInputRef.current?.click()}
-                         className="p-2 text-gray-500 hover:text-black transition"
-                         title="Attach file"
-                       >
-                         <FaPaperclip size={18} />
-                       </button>
-                       <button
-                         onClick={startRecording}
-                         className="p-2 text-gray-500 hover:text-black transition"
-                       >
-                         <FaMicrophone size={18} />
-                       </button>
-                     </>
-                   )}
-                   {!selectedFile && (
-                     <button
-                       onClick={handleSend}
-                       disabled={!input.trim()}
-                       className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                     >
-                       <FaPaperPlane size={14} className="-ml-0.5 mt-0.5" />
-                     </button>
-                   )}
-                </div>
-              </>
+               <button
+                  onClick={startRecording}
+                  className="w-10 h-10 md:w-12 md:h-12 bg-black text-white rounded-full flex items-center justify-center hover:bg-gray-800 hover:scale-105 transition shadow-md flex-shrink-0 group"
+                  title="Hold to Record"
+                >
+                  <FaMicrophone size={16} className="group-hover:scale-110 transition-transform"/>
+              </button>
             )}
-         </div>
+          </div>
+        )}
+      </div>
          <div className="hidden md:block text-center mt-2 text-[10px] text-gray-400">
             {isRecording ? "Stop recording to send" : selectedFile ? "Send or cancel the selected file" : "Press Enter to send"}
          </div>
-      </div>
     </div>
   );
 };

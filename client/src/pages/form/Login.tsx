@@ -19,11 +19,20 @@ const Login: React.FC = () => {
   );
 
   useEffect(() => {
-    if (isSuccess || user) {
-      navigate("/chat-app"); // Redirect to chat directly
+    if (message === "verify-otp") {
+      navigate("/verify-otp", { state: { email } });
+      dispatch(reset());
+      return;
     }
-    dispatch(reset());
-  }, [user, isError, isSuccess, message, navigate, dispatch]);
+
+    if (isSuccess || user) {
+      navigate("/chat-app"); 
+    }
+    
+    if (isError && message !== "verify-otp") {
+      // Normal error handling continues
+    }
+  }, [user, isError, isSuccess, message, navigate, dispatch, email]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

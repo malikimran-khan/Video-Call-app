@@ -1,15 +1,18 @@
 export interface IMessage {
   _id: string;
-  sender: string;
-  receiver: string;
+  sender: string | any;
+  receiver: string | any;
   text?: string;
-  messageType: "text" | "voice" | "image" | "video" | "document";
+  messageType: "text" | "voice" | "image" | "video" | "document" | "call";
   fileUrl?: string;
   fileName?: string;
+  callType?: "voice" | "video";
+  callStatus?: "missed" | "declined" | "completed" | "no_answer";
+  callDuration?: number;
   createdAt: string;
-  // Optimistic upload fields (client-only)
+  updatedAt?: string;
   uploadStatus?: "uploading" | "failed";
   localPreviewUrl?: string;
-  // Delete support
   deletedBySender?: boolean;
+  isGroupChat?: boolean;
 }

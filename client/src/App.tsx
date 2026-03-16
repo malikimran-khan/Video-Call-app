@@ -9,12 +9,14 @@ import Logout from "./pages/form/Logout";
 import EnterOTP from "./pages/form/EnterOTP";
 import { ToastContainer } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
+import CallManager from "./components/CallManager";
 
 export default function App() {
   return (
     <>
     <BrowserRouter>
     <ToastContainer position="top-center" autoClose={3000} />
+    <CallManager />
     <Routes>
      <Route path="/" element={<HomeMain/>}></Route>
      <Route path='/signup' element={<Signup/>}></Route>
