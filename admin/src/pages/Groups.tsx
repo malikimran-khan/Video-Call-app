@@ -46,12 +46,13 @@ export default function Groups() {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const [groupsRes, usersRes] = await Promise.all([
-        api.get("/groups"),
+        api.get("/admin/groups"),
         api.get("/admin/users")
       ]);
       setGroups(groupsRes.data);
@@ -76,7 +77,7 @@ export default function Groups() {
 
     try {
       setCreating(true);
-      const res = await api.post("/groups", {
+      const res = await api.post("/admin/groups", {
         name: newGroupName,
         description: newGroupDesc,
         members: selectedMembers
@@ -96,7 +97,7 @@ export default function Groups() {
   const handleDeleteGroup = async (groupId: string) => {
     try {
       setDeletingId(groupId);
-      await api.delete(`/groups/${groupId}`);
+      await api.delete(`/admin/groups/${groupId}`);
       setGroups(groups.filter(g => g._id !== groupId));
       setShowDeleteConfirm(null);
     } catch (err: any) {
@@ -127,6 +128,12 @@ export default function Groups() {
           <span className="text-sm font-medium">Create New Group</span>
         </button>
       </div>
+
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center items-center h-64">

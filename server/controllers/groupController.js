@@ -77,7 +77,7 @@ export const createGroup = async (req, res) => {
     const group = await Group.create({
       name,
       description,
-      admin: req.user._id,
+      admin: req.user?._id || members[0],
       members,
     });
 

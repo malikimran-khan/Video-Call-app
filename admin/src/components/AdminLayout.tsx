@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -9,7 +9,8 @@ import {
   X, 
   Bell, 
   Search,
-  ChevronRight
+  ChevronRight,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -47,6 +48,7 @@ export default function AdminLayout() {
           <SidebarItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
           <SidebarItem to="/users" icon={Users} label="User Management" />
           <SidebarItem to="/groups" icon={Users} label="Groups" />
+          <SidebarItem to="/broadcast" icon={Send} label="Broadcast" />
           <SidebarItem to="/settings" icon={Settings} label="Settings" />
         </nav>
 
@@ -143,8 +145,10 @@ export default function AdminLayout() {
               </div>
 
               <nav className="flex-1 space-y-2">
-                <SidebarItem to="/" icon={LayoutDashboard} label="Dashboard" />
+                <SidebarItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
                 <SidebarItem to="/users" icon={Users} label="User Management" />
+                <SidebarItem to="/groups" icon={Users} label="Groups" />
+                <SidebarItem to="/broadcast" icon={Send} label="Broadcast" />
                 <SidebarItem to="/settings" icon={Settings} label="Settings" />
               </nav>
 

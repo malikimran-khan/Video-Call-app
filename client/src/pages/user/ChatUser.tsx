@@ -1,512 +1,157 @@
 import React, { useEffect, useState, useRef } from "react";
-import { FaUser, FaUsers, FaPaperPlane, FaEllipsisV, FaPhone, FaVideo, FaMicrophone, FaStop, FaPaperclip, FaTimes, FaDownload, FaRedo, FaBan, FaTrash, FaVolumeUp, FaFont, FaPhoneSlash } from "react-icons/fa";
+import { FaUser, FaUsers, FaPaperPlane, FaEllipsisV, FaPhone, FaVideo, FaMicrophone, FaStop, FaPaperclip, FaTimes, FaDownload, FaBan, FaTrash, FaArrowLeft, FaInfoCircle } from "react-icons/fa";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useDispatch, useSelector } from "react-redux";
+import { motion, AnimatePresence } from "framer-motion";
 import type { AppDispatch, RootState } from "../../app/store";
 import {
   fetchMessages,
   sendMessage,
-  resetChat,
-  addMessage,
-  sendVoiceMessage,
   sendFileMessage,
-  addOptimisticMessage,
-  updateOptimisticMessage,
-  failOptimisticMessage,
-  removeOptimisticMessage,
+  resetChat,
   deleteMessageThunk,
-  markMessageDeletedBySender,
 } from "../../features/chat/chatSlice";
 import { startCall } from "../../features/call/callSlice";
-import type { IMessage } from "../../features/chat/chatTypes";
-import { io } from "socket.io-client";
+import { toast } from "react-toastify";
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import Magnetic from "../../components/Visuals/Magnetic";
 
 interface ChatUserProps {
-  selectedUser: any | null;
-  onBack?: () => void;
+  selectedUser: any;
+  onBack: () => void;
 }
 
 const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { messages, isLoading } = useSelector((state: RootState) => state.chat);
+  const { messages, isLoading, isError, message } = useSelector(
+    (state: RootState) => state.chat
+  );
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
+
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [socket, setSocket] = useState<any>(null);
-
-  // Recording states
-  const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const timerRef = useRef<any>(null);
-
-  // Speech Recognition states
-  const [speechRecognition, setSpeechRecognition] = useState<any>(null);
-  const transcriptRef = useRef<string>("");
-  const [shownTranscripts, setShownTranscripts] = useState<Set<string>>(new Set());
-
-  // Dictation states (Voice to Text input)
-  const [isDictating, setIsDictating] = useState(false);
-  const dictationRecognitionRef = useRef<any>(null);
-
-  const toggleTranscript = (msgId: string) => {
-    setShownTranscripts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(msgId)) newSet.delete(msgId);
-      else newSet.add(msgId);
-      return newSet;
-    });
-  };
-
-  // File attachment states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, messageId: string, isSender: boolean } | null>(null);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Abort controllers for cancelling uploads
-  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-
-  // Context menu state for delete
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string; isSender: boolean } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // Helper to extract a clean string ID from any format (string, object with _id/id, or ObjectId)
-  const getIdString = (val: any): string => {
-    if (!val) return "";
-    if (typeof val === "string") return val;
-    if (val._id) return getIdString(val._id);
-    if (val.id) return getIdString(val.id);
-    if (val.$oid) return String(val.$oid);
-    if (typeof val.toString === "function") return val.toString();
-    return String(val);
-  };
-
-  // Long press state for mobile
-  const longPressTimerRef = useRef<any>(null);
-
-  // Initialize Socket.io
-  useEffect(() => {
-    if (currentUser) {
-      const token = sessionStorage.getItem("token");
-      const newSocket = io("http://localhost:5000", {
-        query: {
-          userId: currentUser.id,
-        },
-        auth: {
-          token
-        }
-      });
-      setSocket(newSocket);
-
-      return () => {
-        newSocket.close();
-      };
-    }
-  }, [currentUser]);
-
-  // Listen for incoming messages + delete events
-  useEffect(() => {
-    if (socket) {
-      socket.on("newMessage", (newMessage: any) => {
-        const isFromSelected = selectedUser && (
-          newMessage.isGroupChat 
-            ? getIdString(newMessage.receiver) === getIdString(selectedUser.id)
-            : getIdString(newMessage.sender) === getIdString(selectedUser.id)
-        );
-
-        if (isFromSelected) {
-           dispatch(addMessage(newMessage));
-        }
-      });
-
-      // Listen for message deleted by the other user (sender)
-      socket.on("messageDeleted", (data: { messageId: string; deletedBySender: boolean }) => {
-        if (data.deletedBySender) {
-          dispatch(markMessageDeletedBySender(data.messageId));
-        }
-      });
-
-      return () => {
-        socket.off("newMessage");
-        socket.off("messageDeleted");
-      };
-    }
-  }, [socket, selectedUser, dispatch]);
+  const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  const [isDictating, setIsDictating] = useState(false);
 
   useEffect(() => {
-    if (selectedUser) {
-      dispatch(fetchMessages({ 
-        userId: selectedUser.id, 
-        isGroupChat: selectedUser.isGroup 
-      }));
+    if (selectedUser?.id) {
+      dispatch(fetchMessages({ userId: selectedUser.id, isGroupChat: selectedUser.isGroup }));
     }
-    return () => {
-      dispatch(resetChat());
-    };
   }, [selectedUser, dispatch]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Clean up file preview URL on unmount or file change
   useEffect(() => {
-    return () => {
-      if (filePreviewUrl) {
-        URL.revokeObjectURL(filePreviewUrl);
-      }
-    };
-  }, [filePreviewUrl]);
+    if (isError) {
+      toast.error(message);
+      dispatch(resetChat());
+    }
+  }, [isError, message, dispatch]);
 
-  // Cleanup abort controllers on unmount
   useEffect(() => {
-    return () => {
-      abortControllersRef.current.forEach((c) => c.abort());
-      abortControllersRef.current.clear();
-    };
-  }, []);
+    if (isDictating) {
+      setInput(transcript);
+    }
+  }, [transcript, isDictating]);
 
-  // Close context menu on click outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
         setContextMenu(null);
       }
     };
-    if (contextMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [contextMenu]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSend = () => {
-    if (!input.trim() || !selectedUser || !currentUser) return;
-    
-    dispatch(
-      sendMessage({
-        receiver: selectedUser.id,
-        text: input,
-        isGroupChat: selectedUser.isGroup,
-      })
-    );
-    setInput("");
+    if (input.trim() && selectedUser?.id) {
+      dispatch(sendMessage({ receiver: selectedUser.id, text: input.trim() }));
+      setInput("");
+      if (isDictating) stopDictation();
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    setSelectedFile(file);
-
-    // Generate preview for images
-    if (file.type.startsWith("image/")) {
-      setFilePreviewUrl(URL.createObjectURL(file));
-    } else {
-      setFilePreviewUrl(null);
-    }
-
-    // Reset file input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    if (file) {
+      setSelectedFile(file);
+      if (file.type.startsWith("image/")) {
+        setFilePreviewUrl(URL.createObjectURL(file));
+      } else {
+        setFilePreviewUrl(null);
+      }
     }
   };
 
-  // Determine message type from MIME type
-  const getMessageTypeFromFile = (file: File): IMessage["messageType"] => {
-    if (file.type.startsWith("image/")) return "image";
-    if (file.type.startsWith("video/")) return "video";
-    return "document";
-  };
-
-  const handleFileSend = async () => {
-    if (!selectedFile || !selectedUser || !currentUser) return;
-
-    const file = selectedFile;
-    const tempId = "temp-" + Date.now();
-    const messageType = getMessageTypeFromFile(file);
-
-    // Create local preview URL for images/videos
-    let localPreviewUrl: string | undefined;
-    if (messageType === "image" || messageType === "video") {
-      localPreviewUrl = URL.createObjectURL(file);
-    }
-
-    // 1. Dispatch optimistic message → appears instantly in chat
-    const optimisticMsg: IMessage = {
-      _id: tempId,
-      sender: currentUser.id,
-      receiver: selectedUser.id,
-      messageType,
-      fileName: file.name,
-      createdAt: new Date().toISOString(),
-      uploadStatus: "uploading",
-      localPreviewUrl,
-      isGroupChat: selectedUser.isGroup,
-    };
-    dispatch(addOptimisticMessage(optimisticMsg));
-
-    // 2. Clear file selection bar
-    clearSelectedFile();
-
-    // 3. Upload in background
-    try {
-      const result = await dispatch(
-        sendFileMessage({ 
-          receiver: selectedUser.id, 
-          file,
-          isGroupChat: selectedUser.isGroup 
-        })
-      ).unwrap();
-
-      // 4. On success → replace temp with real message
-      dispatch(updateOptimisticMessage({ tempId, realMessage: result }));
-
-      // Revoke the local preview URL
-      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
-    } catch (err) {
-      console.error("File upload failed:", err);
-      // 5. On failure → mark as failed
-      dispatch(failOptimisticMessage(tempId));
-    }
-  };
-
-  const handleVoiceSendOptimistic = (audioBlob: Blob, transcriptText?: string) => {
-    if (!selectedUser || !currentUser) return;
-
-    const tempId = "temp-voice-" + Date.now();
-    const localPreviewUrl = URL.createObjectURL(audioBlob);
-
-    // 1. Dispatch optimistic message
-    const optimisticMsg: IMessage = {
-      _id: tempId,
-      sender: currentUser.id,
-      receiver: selectedUser.id,
-      text: transcriptText,
-      messageType: "voice",
-      createdAt: new Date().toISOString(),
-      uploadStatus: "uploading",
-      localPreviewUrl,
-      isGroupChat: selectedUser.isGroup,
-    };
-    dispatch(addOptimisticMessage(optimisticMsg));
-
-    // 2. Upload in background
-    dispatch(sendVoiceMessage({ 
-      receiver: selectedUser.id, 
-      audio: audioBlob, 
-      text: transcriptText,
-      isGroupChat: selectedUser.isGroup
-    }))
-      .unwrap()
-      .then((result) => {
-        dispatch(updateOptimisticMessage({ tempId, realMessage: result }));
-        URL.revokeObjectURL(localPreviewUrl);
-      })
-      .catch((err) => {
-        console.error("Voice upload failed:", err);
-        dispatch(failOptimisticMessage(tempId));
-      });
-  };
-
-  // Retry a failed upload
-  const handleRetry = (msg: IMessage) => {
-    dispatch(removeOptimisticMessage(msg._id));
-  };
-
-  const handleCancelUpload = (tempId: string) => {
-    const controller = abortControllersRef.current.get(tempId);
-    if (controller) {
-      controller.abort();
-      abortControllersRef.current.delete(tempId);
-    }
-    dispatch(removeOptimisticMessage(tempId));
-  };
-
-  // ===== DELETE MESSAGE =====
-  const handleDeleteMessage = (messageId: string, isSender: boolean) => {
-    setContextMenu(null);
-    dispatch(deleteMessageThunk({ messageId, isSender }));
-  };
-
-  // Right-click context menu handler
-  const handleContextMenu = (e: React.MouseEvent, msg: IMessage) => {
-    // Don't show menu for temp/uploading messages or already deleted messages
-    if (msg._id.startsWith("temp-") || msg.uploadStatus || msg.deletedBySender) return;
-
-    e.preventDefault();
-    const isSender = getIdString(msg.sender) === getIdString(currentUser?.id);
-
-    // Calculate position relative to viewport, keeping menu in bounds
-    const x = Math.min(e.clientX, window.innerWidth - 200);
-    const y = Math.min(e.clientY, window.innerHeight - 120);
-
-    setContextMenu({ x, y, messageId: msg._id, isSender });
-  };
-
-  // Long press handlers for mobile
-  const handleTouchStart = (msg: IMessage) => {
-    if (msg._id.startsWith("temp-") || msg.uploadStatus || msg.deletedBySender) return;
-
-    longPressTimerRef.current = setTimeout(() => {
-      const isSender = getIdString(msg.sender) === getIdString(currentUser?.id);
-      // Show context menu in center of screen on mobile
-      setContextMenu({
-        x: window.innerWidth / 2 - 100,
-        y: window.innerHeight / 2 - 60,
-        messageId: msg._id,
-        isSender,
-      });
-    }, 500);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  const handleFileSend = () => {
+    if (selectedFile && selectedUser?.id) {
+      dispatch(sendFileMessage({ receiver: selectedUser.id, file: selectedFile, isGroupChat: selectedUser.isGroup }));
+      clearSelectedFile();
     }
   };
 
   const clearSelectedFile = () => {
     setSelectedFile(null);
-    if (filePreviewUrl) {
-      URL.revokeObjectURL(filePreviewUrl);
-      setFilePreviewUrl(null);
+    setFilePreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const startDictation = () => {
+    if (!browserSupportsSpeechRecognition) {
+      toast.error("Browser doesn't support speech recognition.");
+      return;
     }
+    resetTranscript();
+    setIsDictating(true);
+    SpeechRecognition.startListening({ continuous: true });
   };
 
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName?.split(".").pop()?.toLowerCase() || "";
-    if (["pdf"].includes(ext)) return "📄";
-    if (["doc", "docx"].includes(ext)) return "📝";
-    if (["xls", "xlsx"].includes(ext)) return "📊";
-    if (["ppt", "pptx"].includes(ext)) return "📽️";
-    if (["txt"].includes(ext)) return "📃";
-    return "📎";
+  const stopDictation = () => {
+    setIsDictating(false);
+    SpeechRecognition.stopListening();
   };
 
-  const getFileSize = (size: number) => {
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-
-      // Setup Speech Recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        transcriptRef.current = "";
-        let finalTrans = "";
-        recognition.onresult = (event: any) => {
-          let interimTrans = "";
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTrans += event.results[i][0].transcript + " ";
-            } else {
-              interimTrans += event.results[i][0].transcript + " ";
-            }
-          }
-          transcriptRef.current = finalTrans + interimTrans;
-        };
-
-        recognition.onerror = (event: any) => {
-          console.error("Speech Recognition Error:", event.error);
-        };
-        
-        recognition.onend = () => {
-          console.log("Speech recognition stopped prematurely.");
-        };
-
-        recognition.start();
-        setSpeechRecognition(recognition);
-      }
-
-      recorder.ondataavailable = (e) => chunks.push(e.data);
-      recorder.onstop = () => {
-        const audioBlob = new Blob(chunks, { type: "audio/webm" });
-        const finalTranscript = transcriptRef.current.trim();
-        console.log("Submitting voice note. Transcript length:", finalTranscript.length);
-        if (selectedUser) {
-          handleVoiceSendOptimistic(audioBlob, finalTranscript);
-        }
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
-      setRecordingTime(0);
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Microphone access denied or not available.");
-    }
+  const startRecording = () => {
+    setIsRecording(true);
+    // Placeholder for actual audio recording logic
   };
 
   const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
-      setIsRecording(false);
-      clearInterval(timerRef.current);
-    }
-    if (speechRecognition) {
-      speechRecognition.stop();
-      setSpeechRecognition(null);
-    }
+    setIsRecording(false);
   };
 
-  // ----- Voice Dictation (Speech to Text) for Chat Input -----
-  const startDictation = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Voice typing is not supported in your browser.");
-      return;
-    }
-
-    if (isDictating && dictationRecognitionRef.current) {
-      dictationRecognitionRef.current.stop();
-      setIsDictating(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onresult = (event: any) => {
-      let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + " ";
-        }
-      }
-      if (finalTranscript) {
-        setInput((prev) => prev + finalTranscript);
-      }
-    };
-
-    recognition.onerror = (e: any) => {
-      console.error("Dictation error:", e.error);
-      setIsDictating(false);
-    };
-
-    recognition.onend = () => {
-      setIsDictating(false);
-    };
-
-    recognition.start();
-    dictationRecognitionRef.current = recognition;
-    setIsDictating(true);
+  const handleDeleteMessage = (messageId: string, isSender: boolean) => {
+    dispatch(deleteMessageThunk({ messageId, isSender }));
+    setContextMenu(null);
   };
+
+  const handleContextMenu = (e: React.MouseEvent, msg: any) => {
+    e.preventDefault();
+    const isSender = getIdString(currentUser?.id) === getIdString(msg.sender);
+    setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg._id, isSender });
+  };
+
+  const handleTouchStart = (msg: any) => {
+    // Basic long press detection for mobile
+    const timer = setTimeout(() => {
+        const isSender = getIdString(currentUser?.id) === getIdString(msg.sender);
+        setContextMenu({ x: window.innerWidth / 2, y: window.innerHeight / 2, messageId: msg._id, isSender });
+    }, 500);
+    return () => clearTimeout(timer);
+  };
+
+  const getIdString = (id: any) => (typeof id === "object" ? id?.$oid || id?.id || id?._id : id);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -514,608 +159,264 @@ const ChatUser: React.FC<ChatUserProps> = ({ selectedUser, onBack }) => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Upload overlay component — circular spinner + cancel / retry
-  const UploadOverlay: React.FC<{ msg: IMessage }> = ({ msg }) => {
-    if (!msg.uploadStatus) return null;
-
-    if (msg.uploadStatus === "uploading") {
-      return (
-        <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center z-10 backdrop-blur-[1px]">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCancelUpload(msg._id);
-            }}
-            className="relative w-12 h-12 flex items-center justify-center group"
-            title="Cancel upload"
-          >
-            {/* Spinning ring */}
-            <svg className="absolute inset-0 w-12 h-12 animate-spin" viewBox="0 0 48 48">
-              <circle
-                cx="24" cy="24" r="20"
-                fill="none"
-                stroke="rgba(255,255,255,0.3)"
-                strokeWidth="3"
-              />
-              <circle
-                cx="24" cy="24" r="20"
-                fill="none"
-                stroke="white"
-                strokeWidth="3"
-                strokeDasharray="62.8 62.8"
-                strokeLinecap="round"
-              />
-            </svg>
-            {/* X icon in center */}
-            <FaTimes size={14} className="text-white relative z-10 group-hover:scale-110 transition-transform" />
-          </button>
-        </div>
-      );
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'pdf': return '📄';
+      case 'doc': case 'docx': return '📝';
+      case 'xls': case 'xlsx': return '📊';
+      case 'ppt': case 'pptx': return '📽️';
+      case 'zip': case 'rar': return '📦';
+      default: return '📁';
     }
-
-    if (msg.uploadStatus === "failed") {
-      return (
-        <div className="absolute inset-0 bg-black/50 rounded-2xl flex flex-col items-center justify-center z-10 gap-1.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleRetry(msg);
-            }}
-            className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg"
-            title="Upload failed — tap to remove"
-          >
-            <FaRedo size={14} className="text-white" />
-          </button>
-          <span className="text-white text-[10px] font-medium drop-shadow">Failed</span>
-        </div>
-      );
-    }
-
-    return null;
   };
 
-  // Render deleted message placeholder
-  const renderDeletedMessage = (isMe: boolean) => {
-    return (
-      <div className="flex items-center gap-2 py-0.5">
-        <FaBan size={12} className={`${isMe ? "text-gray-400" : "text-gray-400"} flex-shrink-0`} />
-        <span className={`text-sm italic ${isMe ? "text-gray-400" : "text-gray-400"}`}>
-          This message was deleted
-        </span>
+  const getFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const UploadOverlay = ({ msg }: { msg: any }) => (
+    msg.uploadStatus === "uploading" && (
+      <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center rounded-xl">
+        <div className="text-center">
+            <div className="w-8 h-8 border-4 border-[#1164A3] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <p className="text-[10px] font-bold text-[#1D1C1D]">Uploading...</p>
+        </div>
       </div>
-    );
-  };
+    )
+  );
 
-  // Render message content based on type
-  const renderMessageContent = (msg: IMessage, isMe: boolean) => {
-    // If message was deleted by sender, show deleted placeholder
-    if (msg.deletedBySender) {
-      return renderDeletedMessage(isMe);
+  const renderMessageContent = (msg: any, _isMe: boolean) => {
+    if (msg.deletedBySender || msg.deletedByReceiver) {
+      return (
+        <div className="flex items-center gap-2 opacity-60 italic text-sm">
+          <FaBan size={12} />
+          <span>This message was deleted</span>
+        </div>
+      );
     }
 
-    // Determine the image/video source: use local preview if uploading, otherwise the server URL
-    const mediaSrc = msg.localPreviewUrl || msg.fileUrl;
-
+    const mediaSrc = msg.fileUrl;
+    
     switch (msg.messageType) {
-      case "voice":
-        return (
-          <div className="flex flex-col min-w-[200px] relative">
-            <div className="flex items-center gap-2">
-            {msg.uploadStatus === "uploading" ? (
-              <div className="flex items-center gap-2 py-1 w-full">
-                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
-                <span className={`text-xs ${isMe ? "text-gray-300" : "text-gray-500"}`}>Sending voice note...</span>
-                <button
-                  onClick={() => handleCancelUpload(msg._id)}
-                  className="ml-auto p-1 text-gray-400 hover:text-red-400 transition flex-shrink-0"
-                >
-                  <FaTimes size={12} />
-                </button>
-              </div>
-            ) : msg.uploadStatus === "failed" ? (
-              <div className="flex items-center gap-2 py-1 w-full">
-                <span className="text-xs text-red-400">Failed to send</span>
-                <button
-                  onClick={() => handleRetry(msg)}
-                  className="ml-auto p-1 text-red-400 hover:text-red-300 transition flex-shrink-0"
-                >
-                  <FaRedo size={12} />
-                </button>
-              </div>
-            ) : (
-              <>
-                <audio controls className={`h-8 w-44 ${isMe ? "invert brightness-0" : ""}`}>
-                  <source src={msg.fileUrl} type="audio/webm" />
-                  Your browser does not support the audio element.
-                </audio>
-                <button 
-                  onClick={() => toggleTranscript(msg._id)}
-                  className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${shownTranscripts.has(msg._id) ? "bg-black/20" : "hover:bg-black/10"}`}
-                  title="Translate to text"
-                >
-                  <FaFont size={12} className={isMe ? "text-white" : "text-gray-600"} />
-                </button>
-              </>
-            )}
-            </div>
-            {shownTranscripts.has(msg._id) && !msg.uploadStatus && (
-              <div className={`mt-2 p-2 rounded-lg text-xs leading-relaxed ${isMe ? "bg-white/20 text-gray-200" : "bg-gray-100 text-gray-700"}`}>
-                <span className="font-semibold block mb-0.5">Transcript:</span>
-                {msg.text && msg.text.trim() !== "" ? msg.text : <span className="italic opacity-60">Transcript not available for this voice message.</span>}
-              </div>
-            )}
-          </div>
-        );
-
       case "image":
         return (
-          <div className="max-w-[280px] md:max-w-[320px] relative">
-            <a
-              href={msg.uploadStatus ? undefined : msg.fileUrl}
-              target={msg.uploadStatus ? undefined : "_blank"}
-              rel="noopener noreferrer"
-              className={msg.uploadStatus ? "pointer-events-auto" : ""}
-            >
-              <img
-                src={mediaSrc}
-                alt={msg.fileName || "Image"}
-                className={`rounded-lg w-full h-auto object-cover transition ${
-                  msg.uploadStatus === "uploading" ? "opacity-70" : msg.uploadStatus === "failed" ? "opacity-50" : "cursor-pointer hover:opacity-90"
-                }`}
-                style={{ maxHeight: "300px" }}
-                loading="lazy"
-              />
+          <div className="max-w-[300px] md:max-w-[360px] relative rounded-xl overflow-hidden shadow-sm border border-[#E2E2E2]">
+            <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">
+              <img src={mediaSrc} alt="Image" className={`rounded-xl w-full h-auto object-cover ${msg.uploadStatus === "uploading" ? "opacity-40 grayscale" : "hover:scale-[1.01] transition-transform duration-300"}`} style={{ maxHeight: "300px" }} />
             </a>
             <UploadOverlay msg={msg} />
           </div>
         );
-
       case "video":
         return (
-          <div className="max-w-[300px] md:max-w-[360px] relative">
-            {msg.uploadStatus ? (
-              <>
-                {mediaSrc ? (
-                  <video
-                    className={`rounded-lg w-full h-auto ${msg.uploadStatus === "uploading" ? "opacity-70" : "opacity-50"}`}
-                    style={{ maxHeight: "300px" }}
-                    preload="metadata"
-                    muted
-                  >
-                    <source src={mediaSrc} />
-                  </video>
-                ) : (
-                  <div className="w-full h-[200px] bg-gray-800 rounded-lg flex items-center justify-center">
-                    <FaVideo size={30} className="text-gray-500" />
-                  </div>
-                )}
-                <UploadOverlay msg={msg} />
-              </>
-            ) : (
-              <video
-                controls
-                className="rounded-lg w-full h-auto"
-                style={{ maxHeight: "300px" }}
-                preload="metadata"
-              >
-                <source src={msg.fileUrl} />
-                Your browser does not support the video element.
-              </video>
-            )}
+          <div className="max-w-[300px] md:max-w-[360px] relative rounded-xl overflow-hidden shadow-sm border border-[#E2E2E2]">
+            <video controls={!msg.uploadStatus} className={`rounded-xl w-full h-auto ${msg.uploadStatus ? "opacity-40 grayscale" : ""}`} style={{ maxHeight: "300px" }} src={mediaSrc} />
+            <UploadOverlay msg={msg} />
           </div>
         );
-
       case "document":
         return (
           <div className="relative">
-            <a
-              href={msg.uploadStatus ? undefined : msg.fileUrl}
-              target={msg.uploadStatus ? undefined : "_blank"}
-              rel="noopener noreferrer"
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg min-w-[200px] transition ${
-                isMe
-                  ? "bg-gray-800 hover:bg-gray-700"
-                  : "bg-gray-100 hover:bg-gray-200"
-              } ${msg.uploadStatus === "uploading" ? "opacity-70" : ""} ${msg.uploadStatus === "failed" ? "opacity-50" : ""}`}
-            >
-              <span className="text-2xl flex-shrink-0">{getFileIcon(msg.fileName || "")}</span>
+            <div className={`flex items-center gap-4 px-4 py-3 rounded-xl border border-[#E2E2E2] transition-all bg-[#F8F8F8] hover:bg-white`}>
+              <span className="text-2xl flex-shrink-0 bg-white p-2 rounded-xl shadow-sm">{getFileIcon(msg.fileName || "")}</span>
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium truncate ${isMe ? "text-white" : "text-gray-800"}`}>
-                  {msg.fileName || "Document"}
-                </p>
-                <p className={`text-[10px] ${isMe ? "text-gray-300" : "text-gray-500"}`}>
-                  {msg.uploadStatus === "uploading" ? "Uploading..." : msg.uploadStatus === "failed" ? "Failed" : "Tap to open"}
-                </p>
+                <p className="text-sm font-bold truncate text-[#1D1C1D]">{msg.fileName}</p>
+                <p className="text-[10px] font-medium text-gray-400">{getFileSize(msg.fileSize || 0)}</p>
               </div>
-              {msg.uploadStatus === "uploading" ? (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleCancelUpload(msg._id);
-                  }}
-                  className="flex-shrink-0 w-8 h-8 flex items-center justify-center relative"
-                >
-                  <svg className="absolute inset-0 w-8 h-8 animate-spin" viewBox="0 0 32 32">
-                    <circle cx="16" cy="16" r="13" fill="none" stroke={isMe ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.15)"} strokeWidth="2.5" />
-                    <circle cx="16" cy="16" r="13" fill="none" stroke={isMe ? "white" : "#333"} strokeWidth="2.5" strokeDasharray="41 41" strokeLinecap="round" />
-                  </svg>
-                  <FaTimes size={10} className={`relative z-10 ${isMe ? "text-white" : "text-gray-600"}`} />
-                </button>
-              ) : msg.uploadStatus === "failed" ? (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleRetry(msg);
-                  }}
-                  className="flex-shrink-0"
-                >
-                  <FaRedo size={14} className="text-red-400" />
-                </button>
-              ) : (
-                <FaDownload size={14} className={`flex-shrink-0 ${isMe ? "text-gray-300" : "text-gray-500"}`} />
-              )}
-            </a>
+              <a href={msg.fileUrl} download className="p-2 hover:bg-gray-100 rounded-xl transition text-[#1164A3]"><FaDownload size={14} /></a>
+            </div>
+            <UploadOverlay msg={msg} />
           </div>
         );
-
       case "call": {
-        const formatCallDuration = (s: number) => {
-          if (!s || s === 0) return "";
-          const m = Math.floor(s / 60);
-          const sec = s % 60;
-          return ` · ${m}:${sec.toString().padStart(2, "0")}`;
-        };
         const isVoice = msg.callType === "voice";
-        const icon = msg.callStatus === "completed" 
-          ? (isVoice ? "📞" : "📹")
-          : "📞";
-        const label = (() => {
-          switch (msg.callStatus) {
-            case "completed": return `${isVoice ? "Voice" : "Video"} call${formatCallDuration(msg.callDuration || 0)}`;
-            case "missed": return `Missed ${isVoice ? "voice" : "video"} call`;
-            case "declined": return `Declined ${isVoice ? "voice" : "video"} call`;
-            case "no_answer": return `No answer`;
-            default: return "Call";
-          }
-        })();
         const isNegative = msg.callStatus !== "completed";
         return (
-          <div className={`flex items-center gap-2 py-1 ${isNegative ? "opacity-80" : ""}`}>
-            <span className="text-lg">{icon}</span>
-            <div>
-              <span className={`text-sm ${isNegative ? (isMe ? "text-red-300" : "text-red-500") : ""}`}>{label}</span>
-            </div>
-            {isNegative && !isMe && (
-              <FaPhoneSlash size={12} className="text-red-400 ml-1" />
-            )}
+          <div className={`flex items-center gap-4 py-2 px-1 ${isNegative ? "opacity-60" : ""}`}>
+             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isNegative ? "bg-red-50 text-red-600" : "bg-blue-50 text-[#1164A3]"}`}>
+                {msg.callType === "voice" ? <FaPhone /> : <FaVideo />}
+             </div>
+             <div>
+                <p className="text-sm font-bold">
+                   {isNegative ? (msg.callStatus === "missed" ? "Missed Call" : "Declined") : `${isVoice ? "Voice" : "Video"} Call`}
+                </p>
+                <p className="text-[10px] font-medium text-gray-500">
+                   {msg.callStatus === "completed" ? `Duration: ${formatTime(msg.callDuration || 0)}` : "Unavailable"}
+                </p>
+             </div>
           </div>
         );
       }
-
       default:
-        return (
-          <div className="flex items-center gap-3">
-            <span className="break-words max-w-[90%]">{msg.text}</span>
-            <button
-              onClick={() => {
-                if (window.speechSynthesis.speaking) {
-                  window.speechSynthesis.cancel();
-                }
-                const utterance = new SpeechSynthesisUtterance(msg.text);
-                window.speechSynthesis.speak(utterance);
-              }}
-              className="p-1 rounded-full opacity-60 hover:opacity-100 hover:bg-black/10 transition-all flex-shrink-0"
-              title="Read aloud"
-            >
-              <FaVolumeUp size={12} className={isMe ? "text-white" : "text-gray-600"} />
-            </button>
-          </div>
-        );
+        return <span className="break-words leading-relaxed font-normal">{msg.text}</span>;
     }
   };
 
   if (!selectedUser) {
     return (
-        <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-6 text-center">
-            <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                <FaUser size={30} className="md:size-40 text-gray-400"/>
+        <div className="flex-1 flex flex-col items-center justify-center bg-white text-gray-400 p-6 text-center">
+            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mb-8 border border-[#E2E2E2] shadow-sm">
+                <FaUsers size={40} className="text-gray-200"/>
             </div>
-            <h2 className="text-lg md:text-xl font-semibold text-gray-600">No Chat Selected</h2>
-            <p className="text-xs md:text-sm">Select a user from the sidebar to start a conversation.</p>
+            <h2 className="text-2xl font-black text-[#1D1C1D] mb-2 tracking-tight">Channel Idle</h2>
+            <p className="text-sm font-medium text-gray-500 max-w-xs">Select a user or channel from the sidebar to start collaborating.</p>
         </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 h-full relative bg-gray-50/50">
+    <div className="flex flex-col flex-1 h-full relative bg-white overflow-hidden font-sans text-[#1D1C1D]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-white border-b border-gray-200 shadow-sm z-10">
+      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-[#E2E2E2] z-20 shadow-sm">
         <div className="flex items-center">
-            {/* Back Button for mobile */}
-            <button 
-              onClick={onBack}
-              className="mr-3 p-2 -ml-2 text-gray-600 md:hidden hover:bg-gray-100 rounded-full transition"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+            <button onClick={onBack} className="mr-4 p-2 text-gray-400 md:hidden hover:text-[#1D1C1D] transition">
+              <FaArrowLeft size={18} />
             </button>
 
-            {selectedUser.isGroup ? (
-              <div className="w-9 h-9 md:w-10 md:h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100 mr-3">
-                <FaUsers size={20} />
-              </div>
-            ) : selectedUser.avatar ? (
-              <img src={selectedUser.avatar} alt={selectedUser.username} className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover mr-3 border border-gray-200" />
-            ) : (
-              <div className="w-9 h-9 md:w-10 md:h-10 bg-gray-100 rounded-full mr-3 flex items-center justify-center">
-                <FaUser size={16} className="md:size-18 text-gray-400" />
-              </div>
-            )}
+            <div className="relative">
+                {selectedUser.avatar ? (
+                  <img src={selectedUser.avatar} alt={selectedUser.username} className="w-10 h-10 rounded-lg object-cover mr-3 border border-[#E2E2E2]" />
+                ) : (
+                  <div className="w-10 h-10 bg-gray-50 rounded-lg mr-3 flex items-center justify-center border border-[#E2E2E2]">
+                    <FaUser size={16} className="text-gray-300" />
+                  </div>
+                )}
+                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center border-2 border-white">
+                   <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                </div>
+            </div>
+            
             <div>
-                 <h2 className="text-sm md:text-base font-bold text-gray-900 leading-tight truncate max-w-[120px] md:max-w-none">
-                   {selectedUser.isGroup ? selectedUser.name : selectedUser.username}
+                 <h2 className="text-base font-black text-[#1D1C1D] leading-tight truncate flex items-center gap-2">
+                    {selectedUser.isGroup ? selectedUser.name : (selectedUser.username || selectedUser.name)}
+                    {selectedUser.isGroup && <span className="text-gray-300 font-normal italic">#channel</span>}
                  </h2>
-                 <p className="text-[10px] md:text-xs text-green-500 font-medium">
-                   {selectedUser.isGroup ? `${selectedUser.members?.length || 0} members` : "Online"}
+                 <p className="text-[11px] font-medium text-gray-500 flex items-center gap-1">
+                   User Online
                  </p>
             </div>
         </div>
-        <div className="flex gap-2 md:gap-4 text-gray-400">
-            <button
-              onClick={() => {
-                if (selectedUser) {
-                  dispatch(startCall({
-                    remoteUserId: selectedUser.id || selectedUser._id,
-                    remoteUserInfo: { username: selectedUser.username, avatar: selectedUser.avatar },
-                    callType: "voice",
-                  }));
-                }
-              }}
-              className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"
-              title="Voice Call"
-            >
-              <FaPhone size={18} />
+        <div className="flex gap-1">
+            <button onClick={() => dispatch(startCall({ remoteUserId: selectedUser.id, remoteUserInfo: selectedUser, callType: "voice" }))} className="p-3 bg-white hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#1D1C1D] transition border border-[#E2E2E2]">
+                <FaPhone size={16} />
             </button>
-            <button
-              onClick={() => {
-                if (selectedUser) {
-                  dispatch(startCall({
-                    remoteUserId: selectedUser.id || selectedUser._id,
-                    remoteUserInfo: { username: selectedUser.username, avatar: selectedUser.avatar },
-                    callType: "video",
-                  }));
-                }
-              }}
-              className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"
-              title="Video Call"
-            >
-              <FaVideo size={18} />
+            <button onClick={() => dispatch(startCall({ remoteUserId: selectedUser.id, remoteUserInfo: selectedUser, callType: "video" }))} className="p-3 bg-white hover:bg-gray-50 rounded-lg text-gray-500 hover:text-[#1D1C1D] transition border border-[#E2E2E2]">
+                <FaVideo size={16} />
             </button>
-            <button className="p-2 hover:bg-gray-50 rounded-full text-gray-500 md:text-gray-400 transition"><FaEllipsisV size={18} /></button>
+            <button className="p-3 text-gray-400 hover:text-[#1D1C1D] transition"><FaEllipsisV size={16} /></button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 flex flex-col custom-scrollbar bg-slate-50">
-        {isLoading && messages.length === 0 ? (
-          <LoadingSpinner size="md" label="Loading messages..." />
-        ) : (
-          messages.map((msg) => {
-             const myId = getIdString(currentUser?.id);
-             const msgSenderId = getIdString(msg.sender);
-             const isMe = myId !== "" && msgSenderId !== "" && myId === msgSenderId;
-             return (
-            <div
-              key={msg._id}
-              className={`flex ${
-                isMe ? "justify-end" : "justify-start"
-              }`}
-              onContextMenu={(e) => handleContextMenu(e, msg)}
-              onTouchStart={() => handleTouchStart(msg)}
-              onTouchEnd={handleTouchEnd}
-              onTouchMove={handleTouchEnd}
-            >
-              <div
-                className={`flex flex-col max-w-[85%] md:max-w-lg shadow-sm ${
-                    isMe ? "items-end" : "items-start"
-                }`}
-              >
-                  <div className={`px-4 py-2 md:px-5 md:py-3 rounded-2xl text-sm md:text-base ${
-                    isMe
-                     ? msg.deletedBySender ? "bg-gray-700 text-gray-400 rounded-br-none" : "bg-black text-white rounded-br-none"
-                     : msg.deletedBySender ? "bg-gray-100 text-gray-400 border border-gray-100 rounded-bl-none" : "bg-white text-gray-800 border border-gray-100 rounded-bl-none"
-                  } ${(msg.messageType === "image" || msg.messageType === "video") && !msg.deletedBySender ? "!p-1.5" : ""}`}>
-                    {renderMessageContent(msg, isMe)}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col custom-scrollbar relative z-10 antialiased bg-white">
+        <AnimatePresence>
+            {isLoading && messages.length === 0 ? (
+              <div className="mt-20"><LoadingSpinner size="lg" /></div>
+            ) : (
+              messages.map((msg: any) => {
+                 const isMe = getIdString(currentUser?.id) === getIdString(msg.sender);
+                 return (
+                <motion.div
+                  key={msg._id}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  onContextMenu={(e) => handleContextMenu(e, msg)}
+                  onTouchStart={() => handleTouchStart(msg)}
+                >
+                  <div className={`flex flex-col max-w-[85%] md:max-w-xl ${isMe ? "items-end" : "items-start"}`}>
+                      {!isMe && <span className="text-[11px] font-black mb-1.5 ml-1 text-gray-600 uppercase tracking-tighter">{selectedUser.username}</span>}
+                      <div className={`px-5 py-3 rounded-2xl text-[15px] border transition-all duration-200 ${
+                        isMe
+                         ? msg.deletedBySender ? "bg-gray-50 border-[#E2E2E2] text-gray-400 italic" : "bg-[#1164A3] border-[#1164A3] text-white rounded-br-none shadow-sm"
+                         : msg.deletedBySender ? "bg-gray-50 border-[#E2E2E2] text-gray-400 italic" : "bg-[#F8F8F8] border-[#E2E2E2] text-[#1D1C1D] rounded-bl-none shadow-sm"
+                      }`}>
+                        {renderMessageContent(msg, isMe)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5 px-1 opacity-60">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">
+                             {msg.uploadStatus === "uploading" ? "Transmitting..." : new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                      </div>
                   </div>
-                  <span className="text-[10px] text-gray-400 mt-1 px-1">
-                      {msg.uploadStatus === "uploading" ? (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 animate-spin" viewBox="0 0 16 16">
-                            <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="19 19" strokeLinecap="round" />
-                          </svg>
-                          Sending...
-                        </span>
-                      ) : (
-                        new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      )}
-                  </span>
-              </div>
-            </div>
-          )})
-        )}
+                </motion.div>
+              )})
+            )}
+        </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Context Menu for Delete */}
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 py-1.5 min-w-[180px] animate-in fade-in zoom-in-95 duration-150"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenu.isSender ? (
-            // Sender: Delete for everyone
-            <button
-              onClick={() => handleDeleteMessage(contextMenu.messageId, true)}
-              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition"
-            >
-              <FaTrash size={13} />
-              <span>Delete for everyone</span>
-            </button>
-          ) : (
-            // Receiver: Delete for me only
-            <button
-              onClick={() => handleDeleteMessage(contextMenu.messageId, false)}
-              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition"
-            >
-              <FaTrash size={13} />
-              <span>Delete for me</span>
-            </button>
-          )}
-          {/* Cancel */}
-          <button
-            onClick={() => setContextMenu(null)}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition"
-          >
-            <FaTimes size={13} />
-            <span>Cancel</span>
-          </button>
-        </div>
-      )}
-
-      {/* File Preview Bar */}
-      {selectedFile && (
-        <div className="px-3 md:px-4 pt-3 pb-1 bg-white border-t border-gray-100">
-          <div className="flex items-center gap-3 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
-            {/* Preview thumbnail */}
-            {filePreviewUrl ? (
-              <img src={filePreviewUrl} alt="Preview" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-            ) : selectedFile.type.startsWith("video/") ? (
-              <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <FaVideo size={20} className="text-gray-500" />
-              </div>
-            ) : (
-              <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <span className="text-2xl">{getFileIcon(selectedFile.name)}</span>
-              </div>
-            )}
-            {/* File info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{selectedFile.name}</p>
-              <p className="text-xs text-gray-500">{getFileSize(selectedFile.size)}</p>
-            </div>
-            {/* Actions */}
-            <button
-              onClick={clearSelectedFile}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition flex-shrink-0"
-            >
-              <FaTimes size={14} />
-            </button>
-            <button
-              onClick={handleFileSend}
-              className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition flex-shrink-0"
-            >
-              <FaPaperPlane size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Hidden File Input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileSelect}
-        accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
-        className="hidden"
-      />
-
       {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 p-3 md:p-4 pb-4 md:pb-6 z-10 w-full relative">
-        {isRecording ? (
-          <div className="flex items-center gap-3 md:gap-4 w-full bg-red-50 p-3 rounded-full border border-red-100 animate-pulse">
-            <div className="w-2.5 h-2.5 bg-red-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
-            <span className="text-red-500 font-mono text-sm font-semibold min-w-[50px]">
-              {formatTime(recordingTime)}
-            </span>
-            <span className="text-red-400 text-sm hidden sm:inline">Recording voice message...</span>
-            <button
-              onClick={stopRecording}
-              className="ml-auto w-10 h-10 md:w-12 md:h-12 bg-white text-red-500 rounded-full flex items-center justify-center hover:bg-red-100 transition shadow-sm border border-red-200"
-            >
-              <FaStop />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 max-w-full">
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition flex-shrink-0"
-              title="Attach File"
-            >
-              <FaPaperclip size={18} />
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              onChange={handleFileSelect}
-            />
-
-            {/* Dictation Button */}
-            <button
-              onClick={startDictation}
-              className={`p-2.5 rounded-full transition flex-shrink-0 ${
-                isDictating 
-                  ? "bg-blue-100 text-blue-500 animate-pulse" 
-                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-              }`}
-              title="Voice Typing (Speech to Text)"
-            >
-              {isDictating ? <FaStop size={16} /> : <FaMicrophone size={16} />}
-            </button>
-
-            <div className="flex-1 min-w-0 bg-gray-100 rounded-full flex items-center px-4 relative">
-              {isDictating && (
-                 <span className="absolute -top-8 left-4 text-xs bg-blue-500 text-white py-1 px-3 rounded-full shadow-md animate-bounce">Listening...</span>
-              )}
-              <input
-                type="text"
-                placeholder={isDictating ? "Listening for text..." : "Type a message..."}
-                className="w-full bg-transparent p-3 md:p-3.5 outline-none text-gray-700 placeholder-gray-400 text-sm md:text-base border-none"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-              />
-            </div>
-            
-            {input.trim().length > 0 || isDictating ? (
-              <button
-                onClick={handleSend}
-                className="w-10 h-10 md:w-12 md:h-12 bg-black text-white rounded-full flex items-center justify-center hover:bg-gray-800 hover:scale-105 transition shadow-md flex-shrink-0"
-              >
-                <FaPaperPlane className="-ml-1" size={16} />
-              </button>
-            ) : (
-               <button
-                  onClick={startRecording}
-                  className="w-10 h-10 md:w-12 md:h-12 bg-black text-white rounded-full flex items-center justify-center hover:bg-gray-800 hover:scale-105 transition shadow-md flex-shrink-0 group"
-                  title="Hold to Record"
-                >
-                  <FaMicrophone size={16} className="group-hover:scale-110 transition-transform"/>
-              </button>
+      <div className="px-6 pb-8 pt-2 z-20 bg-white">
+         <div className="bg-white border-2 border-[#E2E2E2] rounded-xl p-2.5 shadow-sm relative group focus-within:border-[#1164A3] transition-all">
+            {/* Context Menu Overlay */}
+            {contextMenu && (
+                <div ref={contextMenuRef} className="fixed z-50 bg-white rounded-xl shadow-2xl border border-[#E2E2E2] py-2 min-w-[180px]" style={{ left: contextMenu.x, top: contextMenu.y - 100 }}>
+                    <button onClick={() => handleDeleteMessage(contextMenu.messageId, contextMenu.isSender)} className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 transition text-left">
+                        <FaTrash size={12} /> <span>Delete Message</span>
+                    </button>
+                    <button onClick={() => setContextMenu(null)} className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-50 transition text-left">
+                        <FaTimes size={12} /> <span>Dismiss</span>
+                    </button>
+                </div>
             )}
-          </div>
-        )}
-      </div>
-         <div className="hidden md:block text-center mt-2 text-[10px] text-gray-400">
-            {isRecording ? "Stop recording to send" : selectedFile ? "Send or cancel the selected file" : "Press Enter to send"}
+
+            {isDictating && <div className="absolute -top-10 left-4 bg-[#1164A3] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider animate-bounce shadow-lg">Listening...</div>}
+
+            <div className="flex items-center gap-1.5">
+                <button onClick={() => fileInputRef.current?.click()} className="p-3 text-gray-400 hover:text-[#1164A3] hover:bg-gray-50 rounded-lg transition"><FaPaperclip size={18} /></button>
+                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" />
+
+                <button onClick={startDictation} className={`p-3 rounded-lg transition ${isDictating ? "bg-blue-50 text-[#1164A3] animate-pulse" : "text-gray-400 hover:text-[#1164A3] hover:bg-gray-50"}`}><FaMicrophone size={18} /></button>
+
+                <div className="flex-1 bg-white rounded-lg flex items-center px-4">
+                    <input
+                        type="text"
+                        placeholder={isDictating ? "Speak your message..." : `Message ${selectedUser.name || selectedUser.username}...`}
+                        className="w-full bg-transparent py-3.5 outline-none text-[#1D1C1D] placeholder-gray-400 text-sm font-medium"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+                    />
+                </div>
+
+                <Magnetic>
+                    <button onClick={isRecording ? stopRecording : (input.trim() ? handleSend : startRecording)} className={`w-11 h-11 rounded-lg flex items-center justify-center transition flex-shrink-0 ${isRecording ? "bg-red-500 text-white" : "bg-[#1164A3] text-white hover:bg-[#0b4d7e]"}`}>
+                        {isRecording ? <FaStop /> : (input.trim() ? <FaPaperPlane size={14} className="ml-0.5" /> : <FaMicrophone size={16} />)}
+                    </button>
+                </Magnetic>
+            </div>
+
+            {/* File Preview */}
+            {selectedFile && (
+                <motion.div initial={{ y: 5, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mt-2.5 px-3 pb-2 pt-2 border-t border-[#E2E2E2] flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center border border-[#E2E2E2]">
+                        {filePreviewUrl ? <img src={filePreviewUrl} className="w-8 h-8 rounded-md object-cover" /> : <span className="text-lg">{getFileIcon(selectedFile.name)}</span>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold text-[#1D1C1D] truncate">{selectedFile.name}</p>
+                        <p className="text-[9px] font-medium text-gray-500">{getFileSize(selectedFile.size)}</p>
+                    </div>
+                    <button onClick={clearSelectedFile} className="p-2 text-gray-400 hover:text-red-500 transition"><FaTimes size={14} /></button>
+                    <button onClick={handleFileSend} className="p-2.5 bg-[#1164A3] text-white rounded-lg hover:bg-[#0b4d7e] transition"><FaPaperPlane size={14} /></button>
+                </motion.div>
+            )}
          </div>
+         <div className="mt-3 flex items-center gap-4 px-2">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                <FaInfoCircle /> End-to-End Encrypted
+            </div>
+            <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                iVoice Protocol Secure
+            </div>
+         </div>
+      </div>
     </div>
   );
 };

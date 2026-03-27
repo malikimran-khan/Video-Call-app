@@ -1,9 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api", // backend URL
-  // baseURL: "https://ivoice-bakend.vercel.app/api", // backend URL
-  withCredentials: true, // 🔥 REQUIRED for cookies
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api",
+  withCredentials: true,
 });
 
 // Add a request interceptor to attach the auth token

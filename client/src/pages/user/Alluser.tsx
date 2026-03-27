@@ -1,51 +1,31 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../app/store";
-import { fetchUsers, resetUsers } from "../../features/user/userSlice";
-import { fetchMyGroups, resetGroups } from "../../features/group/groupSlice";
-import { FaUser, FaEllipsisV, FaCog, FaSignOutAlt, FaUserCircle, FaUsers } from "react-icons/fa";
+import { fetchUsers } from "../../features/user/userSlice";
+import { fetchMyGroups } from "../../features/group/groupSlice";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { FaUser, FaUsers, FaPlus, FaSignOutAlt, FaCog, FaCircle } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { logout, reset } from "../../features/auth/authSlice";
 
 interface AlluserProps {
   onSelectUser: (user: any) => void;
-  selectedUserId: string | null;
+  selectedUserId?: string;
 }
 
 const Alluser: React.FC<AlluserProps> = ({ onSelectUser, selectedUserId }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { users, isLoading: usersLoading, isError: usersError, message: usersMessage } = useSelector(
-    (state: RootState) => state.users
-  );
-  const { groups, isLoading: groupsLoading } = useSelector(
-    (state: RootState) => state.groups
-  );
-  const { user: currentUser } = useSelector((state: RootState) => state.auth);
-  
-  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { users, isLoading: usersLoading } = useSelector((state: RootState) => state.users);
+  const { groups, isLoading: groupsLoading } = useSelector((state: RootState) => state.groups);
+  const { user } = useSelector((state: RootState) => state.auth);
+  const isLoading = usersLoading || groupsLoading;
+  const [activeTab, setActiveTab] = useState<"users" | "groups">("users");
 
   useEffect(() => {
     dispatch(fetchUsers());
     dispatch(fetchMyGroups());
-    return () => {
-      dispatch(resetUsers());
-      dispatch(resetGroups());
-    };
   }, [dispatch]);
-
-  // Handle clicking outside of dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const handleLogout = () => {
     dispatch(logout());
@@ -53,133 +33,110 @@ const Alluser: React.FC<AlluserProps> = ({ onSelectUser, selectedUserId }) => {
     navigate("/login");
   };
 
-  const isLoading = usersLoading || groupsLoading;
-
-  if (isLoading && users.length === 0 && groups.length === 0) return <LoadingSpinner size="md" label="Loading chats..." />;
-  if (usersError) return <p className="text-center mt-10 text-red-500">{usersMessage}</p>;
-
   return (
-    <div className="w-full bg-white border-r border-gray-200 flex flex-col h-full z-10">
-      {/* Current User Header */}
-      <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/80">
+    <div className="flex flex-col h-full w-full bg-[#19171D] text-[#D1D2D3] font-sans border-r border-white/5">
+      {/* Workspace Header */}
+      <div className="p-4 border-b border-white/10 flex items-center justify-between group">
         <div className="flex items-center gap-3">
-          {currentUser?.avatar ? (
-            <img 
-              src={currentUser.avatar} 
-              alt={currentUser.username} 
-              className="w-10 h-10 rounded-full object-cover border border-gray-200 cursor-pointer"
-              onClick={() => navigate('/profile')}
-            />
-          ) : (
-            <div 
-              className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center cursor-pointer"
-              onClick={() => navigate('/profile')}
-            >
-              <FaUser size={18} className="text-gray-400" />
-            </div>
-          )}
-          <span className="font-semibold text-gray-800 hidden sm:block">
-            {currentUser?.username || "Chats"}
-          </span>
-        </div>
-        
-        <div className="relative" ref={menuRef}>
-          <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition"
-          >
-            <FaEllipsisV size={18} />
-          </button>
-          
-          {/* Dropdown Menu */}
-          {isMenuOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50">
-              <button 
-                onClick={() => { setIsMenuOpen(false); navigate('/profile'); }}
-                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition"
-              >
-                <FaUserCircle size={16} className="text-gray-400" /> Profile
-              </button>
-              <button 
-                onClick={() => { setIsMenuOpen(false); alert("Settings coming soon!"); }}
-                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition"
-              >
-                <FaCog size={16} className="text-gray-400" /> Settings
-              </button>
-              <div className="border-t border-gray-100 my-1"></div>
-              <button 
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition"
-              >
-                <FaSignOutAlt size={16} /> Logout
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {/* Groups Section */}
-        {groups.length > 0 && (
-          <div className="py-2">
-            <h4 className="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider">Groups</h4>
-            {groups.map((group: any) => (
-              <div
-                key={group._id}
-                onClick={() => onSelectUser({ ...group, id: group._id, isGroup: true })}
-                className={`flex items-center p-4 cursor-pointer transition-colors duration-200 border-b border-gray-50 ${
-                  selectedUserId === group._id ? "bg-indigo-50" : "hover:bg-gray-50"
-                }`}
-              >
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                    <FaUsers size={24} />
-                  </div>
-                </div>
-                
-                <div className="ml-4 flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900 truncate">{group.name}</h3>
-                  <p className="text-gray-500 text-sm truncate">{group.members.length} members</p>
-                </div>
-              </div>
-            ))}
+          <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center font-black text-white text-lg">
+             {user?.username?.[0]?.toUpperCase() || "V"}
           </div>
-        )}
+          <div>
+            <h1 className="text-sm font-black text-white truncate max-w-[120px]">iVoice Workspace</h1>
+            <div className="flex items-center gap-1.5 mt-0.5">
+               <FaCircle className="text-emerald-500 text-[6px]" />
+               <span className="text-[10px] font-bold text-gray-400 capitalize">{user?.username}</span>
+            </div>
+          </div>
+        </div>
+        <button onClick={() => navigate("/profile")} className="p-2 text-gray-500 hover:text-white transition rounded-lg hover:bg-white/5">
+          <FaCog size={16} />
+        </button>
+      </div>
 
-        <h4 className="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider mt-2">Direct Messages</h4>
-        {users.length > 0 ? (
-          users.map((user: any) => (
-            <div
-              key={user.id}
-              onClick={() => onSelectUser(user)}
-              className={`flex items-center p-4 cursor-pointer transition-colors duration-200 border-b border-gray-50 ${
-                selectedUserId === user.id ? "bg-gray-100" : "hover:bg-gray-50"
-              }`}
+      {/* Tabs / Filters */}
+      <div className="flex p-1 mx-4 mt-6 bg-black/20 rounded-lg">
+        <button 
+          onClick={() => setActiveTab("users")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-black uppercase tracking-widest rounded-md transition ${activeTab === "users" ? "bg-white/10 text-white" : "hover:bg-white/5"}`}
+        >
+          <FaUser size={10} /> Users
+        </button>
+        <button 
+          onClick={() => setActiveTab("groups")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-black uppercase tracking-widest rounded-md transition ${activeTab === "groups" ? "bg-white/10 text-white" : "hover:bg-white/5"}`}
+        >
+          <FaUsers size={12} /> Groups
+        </button>
+      </div>
+
+      {/* List Container */}
+      <div className="flex-1 overflow-y-auto px-2 py-4 space-y-1 custom-scrollbar">
+        <div className="px-4 py-2 mt-4 mb-2">
+           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
+             {activeTab === "users" ? "Active Users" : "Active Channels"}
+           </h3>
+        </div>
+
+        {isLoading ? (
+          <div className="py-10"><LoadingSpinner size="sm" /></div>
+        ) : activeTab === "users" ? (
+          users.filter((u: any) => u.id !== user?.id).map((u: any) => (
+            <button
+              key={u.id}
+              onClick={() => onSelectUser(u)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition text-left group
+                ${selectedUserId === u.id ? "bg-[#1164A3] text-white" : "hover:bg-white/[0.05]"}
+              `}
             >
-              <div className="relative">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.username}
-                    className="w-12 h-12 rounded-full object-cover border border-gray-200"
-                  />
+              <div className="relative flex-shrink-0">
+                {u.avatar ? (
+                  <img src={u.avatar} alt={u.username} className="w-8 h-8 rounded-md object-cover" />
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                     <FaUser size={20} className="text-gray-400" />
+                  <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold border border-white/10 bg-white/5 text-gray-400`}>
+                    {u.username[0].toUpperCase()}
                   </div>
                 )}
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#19171D] bg-emerald-500 shadow-sm animate-pulse`}></div>
               </div>
-              
-              <div className="ml-4 flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900 truncate">{user.username}</h3>
-                <p className="text-gray-500 text-sm truncate">{user.bio || "Available"}</p>
+              <div className="flex-1 min-w-0">
+                <span className={`text-[13px] font-semibold truncate ${selectedUserId === u.id ? "text-white" : "text-[#D1D2D3]"}`}>{u.username}</span>
               </div>
-            </div>
+            </button>
           ))
         ) : (
-          <p className="text-center text-gray-500 p-8 text-sm">No other users found.</p>
+          groups.map((g: any) => (
+            <button
+              key={g._id}
+              onClick={() => onSelectUser({ ...g, isGroup: true, id: g._id })}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition text-left
+                ${selectedUserId === g._id ? "bg-[#1164A3] text-white" : "hover:bg-white/[0.05]"}
+              `}
+            >
+              <div className="w-8 h-8 rounded-md flex items-center justify-center bg-white/5 text-gray-400 font-bold border border-white/10">#</div>
+              <div className="flex-1 min-w-0">
+                <span className={`text-[13px] font-semibold truncate ${selectedUserId === g._id ? "text-white" : "text-[#D1D2D3]"}`}>{g.name}</span>
+              </div>
+            </button>
+          ))
         )}
+
+        {/* Add Group Option */}
+        {activeTab === "groups" && (
+           <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-gray-500 hover:text-white hover:bg-white/5 transition italic text-[13px]">
+              <FaPlus size={12} /> Create Channel
+           </button>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-white/5 bg-black/10">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-3 py-2.5 rounded-lg border border-white/10 text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10 transition"
+        >
+          <FaSignOutAlt size={14} /> Exit Workspace
+        </button>
       </div>
     </div>
   );

@@ -2,18 +2,10 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import { generateToken } from "../utils/generateToken.js";
 import nodemailer from "nodemailer";
+import transporter from "../utils/mailUtils.js";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-// Nodemailer transparent transporter
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 // Login Controller (Secure Cookie-based Auth)
 export const login = async (req, res) => {
