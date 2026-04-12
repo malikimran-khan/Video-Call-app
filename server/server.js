@@ -48,7 +48,7 @@ app.get("/api", (req, res) => {
   res.send("API is running....");
 });
 
-if (process.env.NODE_ENV === "production") {
+if (!process.env.VERCEL && process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../client/dist");
   app.use(express.static(clientBuildPath));
   app.get("*", (req, res) => {

@@ -161,9 +161,10 @@ NODE_ENV=production npm start
 
 ### Vercel Setup
 
-1. **Server Deployment**:
+1. **Server Deployment** (API-only):
    - Import the `server/` folder as a new project on Vercel
    - Set environment variables in Vercel dashboard: `PORT`, `MONGO_URI`, `JWT_SECRET`, `JWT_EXPIRE`, `EMAIL_USER`, `EMAIL_PASS`, `CLOUDINARY_*`
+   - The server runs as a serverless function and only handles `/api/*` routes
 
 2. **Client Deployment**:
    - Import the `client/` folder as a new project on Vercel
@@ -172,6 +173,8 @@ NODE_ENV=production npm start
 3. **Admin Deployment**:
    - Import the `admin/` folder as a new project on Vercel
    - Set `VITE_API_BASE_URL` to your server URL
+
+**Note**: Socket.io real-time features (live chat, voice/video calls) are disabled in Vercel serverless mode. For full functionality, deploy the server to a platform that supports WebSockets (e.g., Railway, Render, or AWS).
 
 ### Local Production Test
 
