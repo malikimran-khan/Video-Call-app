@@ -14,12 +14,16 @@ export default defineConfig({
       devOptions: {
         enabled: true
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['ivoice_square.png', 'vite.svg'],
       manifest: {
-        name: 'Voice Call App',
-        short_name: 'VoiceApp',
-        description: 'A professional video and voice call application',
-        theme_color: '#ffffff',
+        name: 'Ivoice Video Call App',
+        short_name: 'Ivoice',
+        description: 'A Progressive Web App for HD video and voice calling.',
+        theme_color: '#0f172a',
+        background_color: '#ffffff',
+        display: 'standalone',
+        scope: '/',
+        start_url: '/',
         icons: [
           {
             src: '/ivoice_square.png',
@@ -38,6 +42,11 @@ export default defineConfig({
             purpose: 'any maskable'
           }
         ]
+      },
+      workbox: {
+        cleanupOutdatedCaches: true,
+        navigateFallback: '/',
+        maximumFileSizeToCacheInBytes: 5000000,
       }
     })
   ],
