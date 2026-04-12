@@ -6,14 +6,25 @@ import CallHistory from "../models/CallHistory.js";
 import Group from "../models/Group.js";
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: (origin, callback) => callback(null, true),
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
+
+const useSockets = !process.env.VERCEL;
+let server = null;
+let io = {
+  to: () => ({ emit: () => {} }),
+  emit: () => {},
+  on: () => {},
+};
+
+if (useSockets) {
+  server = http.createServer(app);
+  io = new Server(server, {
+    cors: {
+      origin: (origin, callback) => callback(null, true),
+      methods: ["GET", "POST"],
+      credentials: true,
+    },
+  });
+}
 
 export const getReceiverSocketId = (receiverId) => {
   return userSocketMap[receiverId];
