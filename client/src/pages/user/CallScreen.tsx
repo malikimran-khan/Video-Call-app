@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from "react";
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaVolumeUp, FaUser, FaShieldAlt, FaInfoCircle } from "react-icons/fa";
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaVolumeUp, FaUser, FaInfoCircle } from "react-icons/fa";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../app/store";
 import {
@@ -19,7 +19,7 @@ import {
   stopMediaStream,
 } from "../../utils/webrtcUtils";
 import type { Socket } from "socket.io-client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface CallScreenProps {
   socket: Socket | null;

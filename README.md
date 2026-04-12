@@ -48,31 +48,49 @@ cd "video call app"
 
 ## Environment setup
 
-Copy the example environment file and fill in your values:
+Each folder has its own `.env` file:
+
+- `server/.env` — Server environment variables
+- `client/.env` — Client environment variables (VITE_API_BASE_URL)
+- `admin/.env` — Admin environment variables (VITE_API_BASE_URL)
+
+Copy the example files and fill in your values:
 
 ```bash
-cp .env.example .env
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+cp admin/.env.example admin/.env
 ```
 
-### Required environment variables
+### Server environment variables (server/.env)
 
 ```env
-NODE_ENV=development
 PORT=5000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret_key
-
+JWT_EXPIRE=7d
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASS=your_email_password
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
+```
 
+### Client/Admin environment variables (client/.env and admin/.env)
+
+```env
 VITE_API_BASE_URL=http://localhost:5000/api
 ```
 
-- `MONGO_URI` — your MongoDB connection URI
-- `JWT_SECRET` — secret string for signing JWT tokens
-- Cloudinary variables — used for image uploads and avatars
-- `VITE_API_BASE_URL` — the backend URL used by both client and admin frontends
+For production deployment on Vercel, set these variables in the Vercel dashboard for each project.
+
+### .gitignore
+
+The root `.gitignore` file excludes:
+- `.env` files (environment variables)
+- `node_modules/` (dependencies)
+- `dist/` folders (build outputs)
+- Log files and IDE files
 
 ## Install dependencies
 
@@ -139,12 +157,32 @@ NODE_ENV=production npm start
 
 > On Windows, use a tool such as `cross-env` or set environment variables through PowerShell before running the command.
 
-## Deployment notes
+## Production Deployment
 
-- Build the client and admin apps first.
-- Ensure `MONGO_URI`, `JWT_SECRET`, and Cloudinary keys are set in production.
-- If deploying the backend and frontend separately, update `VITE_API_BASE_URL` to point to the backend URL.
-- The client is PWA-ready and will register a service worker when built.
+### Vercel Setup
+
+1. **Server Deployment**:
+   - Import the `server/` folder as a new project on Vercel
+   - Set environment variables in Vercel dashboard: `PORT`, `MONGO_URI`, `JWT_SECRET`, `JWT_EXPIRE`, `EMAIL_USER`, `EMAIL_PASS`, `CLOUDINARY_*`
+
+2. **Client Deployment**:
+   - Import the `client/` folder as a new project on Vercel
+   - Set `VITE_API_BASE_URL` to your server URL (e.g., `https://your-ivoice-server.vercel.app/api`)
+
+3. **Admin Deployment**:
+   - Import the `admin/` folder as a new project on Vercel
+   - Set `VITE_API_BASE_URL` to your server URL
+
+### Local Production Test
+
+To test production locally:
+
+```bash
+cd server
+NODE_ENV=production npm start
+```
+
+This will serve the built client from `client/dist/`.
 
 ## PWA details
 

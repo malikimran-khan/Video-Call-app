@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import type { RootState, AppDispatch } from "../../app/store";
-import { FaUser, FaEnvelope, FaCamera, FaArrowLeft, FaTrash, FaSave, FaInfoCircle, FaShieldAlt, FaIdCard, FaUserCog } from "react-icons/fa";
+import { FaUser, FaEnvelope, FaCamera, FaArrowLeft, FaTrash, FaSave, FaInfoCircle, FaUserCog } from "react-icons/fa";
 import { useNavigate, Link } from "react-router-dom";
 import { updateProfile, deleteAccount, reset } from "../../features/auth/authSlice";
 import { toast } from "react-toastify";
-import { motion } from "framer-motion";
-import Magnetic from "../../components/Visuals/Magnetic";
 
 const Profile: React.FC = () => {
   const { user, isLoading, isSuccess, isError, message } = useSelector((state: RootState) => state.auth);
