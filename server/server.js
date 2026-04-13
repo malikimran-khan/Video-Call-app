@@ -74,10 +74,12 @@ app.use(express.json({ limit: "10mb" })); // For avatar base64
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Health check route - no DB required
 app.get("/api", (req, res) => {
   res.send("API is running....");
 });
 
+// DB middleware for all other /api routes
 app.use("/api", dbMiddleware);
 
 import groupRoutes from "./routes/groupRoutes.js";
