@@ -4,7 +4,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import { errorHandler } from "./middleware/errorMiddleware.js";
-import messageRoute from './routes/messageRoutes.js'
+import messageRoute from './routes/messageRoutes.js';
 import callRoutes from './routes/callRoutes.js';
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -12,28 +12,53 @@ import path from "path";
 import { fileURLToPath } from "url";
 import serverless from "serverless-http";
 import { app, server } from "./socket/socket.js";
-app.get("/api/test", (req, res) => {
-  res.send("API is running....");
-});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
 let dbReadyPromise = null;
-const ensureDbReady = async () => {
+let dbConnected = false;
+
+const startDbConnection = async () => {
+  if (dbConnected) return;
   if (!dbReadyPromise) {
-    dbReadyPromise = connectDB();
+    dbReadyPromise = connectDB()
+      .then((conn) => {
+        dbConnected = true;
+        return conn;
+      })
+      .catch((error) => {
+        console.error("MongoDB init error:", error.message);
+        return error;
+      });
   }
-  await dbReadyPromise;
+  return dbReadyPromise;
 };
 
-// Middleware
-// Robust CORS Middleware 
+const dbMiddleware = async (req, res, next) => {
+  if (dbConnected) {
+    return next();
+  }
 
-app.get("/api/test", (req, res) => {
-  res.send("API is running....");
-});
+  const connectPromise = startDbConnection();
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Database connection timed out")), 2500),
+  );
+
+  try {
+    const result = await Promise.race([connectPromise, timeoutPromise]);
+    if (result instanceof Error) {
+      dbReadyPromise = null;
+      return next(result);
+    }
+    return next();
+  } catch (error) {
+    dbReadyPromise = null;
+    return next(error);
+  }
+};
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -43,19 +68,17 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 };
+
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" })); // For avatar base64
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use(async (req, res, next) => {
-  try {
-    await ensureDbReady();
-    next();
-  } catch (error) {
-    next(error);
-  }
+app.get("/api", (req, res) => {
+  res.send("API is running....");
 });
+
+app.use("/api", dbMiddleware);
 
 import groupRoutes from "./routes/groupRoutes.js";
 
@@ -65,10 +88,6 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messageRoute);
 app.use("/api/calls", callRoutes);
 app.use("/api/groups", groupRoutes);
-
-app.get("/api", (req, res) => {
-  res.send("API is running....");
-});
 
 if (!process.env.VERCEL && process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../client/dist");
