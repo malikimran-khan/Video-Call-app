@@ -1,6 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
-import connectDB from "./config/db.js";
+import connectDB, { isDbConnected } from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import { errorHandler } from "./middleware/errorMiddleware.js";
@@ -18,47 +18,10 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-let dbReadyPromise = null;
-let dbConnected = false;
-
-const startDbConnection = async () => {
-  if (dbConnected) return;
-  if (!dbReadyPromise) {
-    dbReadyPromise = connectDB()
-      .then((conn) => {
-        dbConnected = true;
-        return conn;
-      })
-      .catch((error) => {
-        console.error("MongoDB init error:", error.message);
-        return error;
-      });
-  }
-  return dbReadyPromise;
-};
-
-const dbMiddleware = async (req, res, next) => {
-  if (dbConnected) {
-    return next();
-  }
-
-  const connectPromise = startDbConnection();
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Database connection timed out")), 2500),
-  );
-
-  try {
-    const result = await Promise.race([connectPromise, timeoutPromise]);
-    if (result instanceof Error) {
-      dbReadyPromise = null;
-      return next(result);
-    }
-    return next();
-  } catch (error) {
-    dbReadyPromise = null;
-    return next(error);
-  }
-};
+// Start DB connection asynchronously (non-blocking)
+connectDB().catch((err) => {
+  console.error("Initial DB connection failed:", err.message);
+});
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -79,8 +42,32 @@ app.get("/api", (req, res) => {
   res.send("API is running....");
 });
 
-// DB middleware for all other /api routes
-app.use("/api", dbMiddleware);
+// DB status check route
+app.get("/api/db-status", (req, res) => {
+  const connected = isDbConnected();
+  res.json({
+    status: connected ? "connected" : "connecting",
+    ready: connected
+  });
+});
+
+// Middleware to check DB connection for API routes
+const requireDb = (req, res, next) => {
+  if (isDbConnected()) {
+    return next();
+  }
+  return res.status(503).json({
+    message: "Database connection in progress. Please try again in a moment."
+  });
+};
+
+// Apply DB requirement to all /api routes except health checks
+app.use("/api", (req, res, next) => {
+  if (req.path === "/" || req.path === "/db-status") {
+    return next(); // Skip DB check for health routes
+  }
+  return requireDb(req, res, next);
+});
 
 import groupRoutes from "./routes/groupRoutes.js";
 
